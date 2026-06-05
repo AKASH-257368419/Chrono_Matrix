@@ -1,0 +1,529 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header-flex">
+    <h2>📚 Theory Class Lobby</h2>
+    <button class="btn" style="background: var(--success);" onclick="globalGenerateTimetable('full')">Generate Full Timetable</button>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button class="btn btn-secondary dept-admin-hidden" onclick="openModal('addDeptModal')">+ Dept</button>
+        <button class="btn dept-admin-hidden" style="background: var(--danger); border: none; padding: 0.5rem;" onclick="openDeleteModal('dept')">🗑️</button>
+        
+        <button class="btn btn-secondary" onclick="openModal('addRoomModal')">+ Room</button>
+        <button class="btn" style="background: var(--danger); border: none; padding: 0.5rem;" onclick="openDeleteModal('room')">🗑️</button>
+        
+        <button class="btn btn-secondary" onclick="openModal('addSubModal')">+ Subject</button>
+        <button class="btn" style="background: var(--danger); border: none; padding: 0.5rem;" onclick="openDeleteModal('sub')">🗑️</button>
+    </div>
+</div>
+
+<div class="glass-card">
+    <h3 style="margin-bottom: 1.5rem;">Add Theory Requirement</h3>
+    <form id="theoryReqForm" class="two-col-grid">
+        <div class="form-group">
+            <label>Department</label>
+            <select id="tr-dept" required onchange="loadDeptData()"></select>
+        </div>
+        <div class="form-group">
+            <label>Subject</label>
+            <select id="tr-subject" required></select>
+        </div>
+        <div class="form-group">
+            <label>Faculty</label>
+            <select id="tr-faculty" required></select>
+        </div>
+        <div class="form-group">
+            <label>Classroom</label>
+            <select id="tr-room" required></select>
+        </div>
+        <div class="form-group">
+            <label>Semester</label>
+            <input type="number" id="tr-sem" min="1" max="8" required>
+        </div>
+        <div class="form-group">
+            <label>Section</label>
+            <input type="text" id="tr-sec" list="tr-section-options" required>
+            <datalist id="tr-section-options"></datalist>
+        </div>
+        <div class="form-group">
+            <label>Academic Year</label>
+            <input type="text" id="tr-year" value="2025-26" required>
+        </div>
+        <div class="form-group">
+            <label>Weekly Hours</label>
+            <input type="number" id="tr-hours" required>
+        </div>
+        <div style="grid-column: span 2; display: flex; gap: 1rem;">
+            <button type="submit" class="btn" onclick="document.getElementById('keep-data').value='false'">Save & Clear Form</button>
+            <button type="submit" class="btn btn-secondary" onclick="document.getElementById('keep-data').value='true'">Save & Add Another Section</button>
+            <input type="hidden" id="keep-data" value="false">
+            <input type="hidden" id="tr-edit-id" value="">
+        </div>
+        <div id="tr-edit-status" class="feed-edit-status" style="grid-column: span 2;" hidden>
+            Altering saved theory requirement.
+            <button type="button" onclick="cancelTheoryAlter()">Cancel Alter</button>
+        </div>
+        <div class="saved-requirements" style="grid-column: span 2;">
+            <div class="saved-requirements-header">
+                <h4>Saved Theory Requirements</h4>
+                <span id="saved-theory-count">0 saved</span>
+            </div>
+            <div id="saved-theory-status" class="feed-status" hidden></div>
+            <div id="saved-theory-list" class="saved-requirements-list">
+                Saved theory requirements will appear here after you save them.
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Modals for dynamic addition -->
+<!-- Add Dept Modal -->
+<div class="modal-overlay" id="addDeptModal">
+    <div class="modal-content">
+        <h3>Add Department</h3>
+        <form onsubmit="event.preventDefault(); addDept();">
+            <input type="text" id="new-dept-name" placeholder="Department Name" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:1rem;" required>
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addDeptModal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Subject Modal -->
+<div class="modal-overlay" id="addSubModal">
+    <div class="modal-content">
+        <h3>Add Subject</h3>
+        <form onsubmit="event.preventDefault(); addSubject();">
+            <input type="text" id="sub-code" placeholder="Subject Code" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:1rem;" required>
+            <input type="text" id="sub-name" placeholder="Subject Name" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:0.5rem;" required>
+            <input type="text" value="Theory Class" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:0.5rem;" readonly>
+            <input type="hidden" id="sub-type" value="Theory">
+            <select id="sub-dept" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:0.5rem;"></select>
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addSubModal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Faculty Modal -->
+<div class="modal-overlay" id="addFacultyModal">
+    <div class="modal-content">
+        <h3>Add Faculty</h3>
+        <form onsubmit="event.preventDefault(); addFaculty();">
+            <input type="text" id="fac-name" placeholder="Faculty Name" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:1rem;" required>
+            <select id="fac-dept" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:0.5rem;"></select>
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addFacultyModal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Room Modal -->
+<div class="modal-overlay" id="addRoomModal">
+    <div class="modal-content">
+        <h3>Add Room</h3>
+        <form onsubmit="event.preventDefault(); addRoom();">
+            <input type="text" id="room-name" placeholder="Room Name (e.g. Lab 1)" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:1rem;" required>
+            <select id="room-type" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:0.5rem;">
+                <option value="Lab">Lab</option>
+                <option value="Theory">Theory</option>
+            </select>
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addRoomModal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Alter Modal -->
+<div class="modal-overlay" id="alterModal">
+    <div class="modal-content">
+        <h3>Alter Table</h3>
+        <div class="form-group">
+            <label>Department</label>
+            <select id="alter-department" onchange="loadAlterItems()"></select>
+        </div>
+        <div class="form-group">
+            <label>What do you want to alter?</label>
+            <select id="alter-type" onchange="loadAlterItems()">
+                <option value="faculty-name">Faculty Name</option>
+                <option value="faculty-availability">Faculty Availability</option>
+                <option value="subject-details">Subject Details</option>
+                <option value="subject-timing">Subject Day / Time</option>
+                <option value="room">Room</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label id="alter-select-label">Select Record</label>
+            <select id="alter-select" onchange="renderAlterFields()"></select>
+        </div>
+        <div id="alter-fields"></div>
+        <div style="display:flex; gap:1rem; margin-top:1rem;">
+            <button class="btn" onclick="executeAlter()">Save Changes</button>
+            <button class="btn btn-secondary" onclick="closeModal('alterModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Modals -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal-content">
+        <h3 id="del-title">Delete</h3>
+        <select id="del-select" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:1rem;"></select>
+        <input type="hidden" id="del-type">
+        <div style="display:flex; gap:1rem; margin-top:1rem;">
+            <button class="btn" style="background: var(--danger);" onclick="executeDelete()">Delete</button>
+            <button class="btn btn-secondary" onclick="closeModal('deleteModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadDropdowns();
+    setupTheorySavedListRefresh();
+    await loadSavedTheoryRequirements();
+});
+
+let allTheorySubjects = [];
+let allFaculties = [];
+let allRooms = [];
+let savedTheoryRequirements = [];
+
+function roomLabel(room) {
+    const department = room.department || (room.department_id ? `Dept ${room.department_id}` : 'Shared');
+    return `${room.name} (${department})`;
+}
+
+function escapeText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+async function loadDropdowns() {
+    const depts = await apiCall('/api/departments');
+    allDepts = depts;
+    const loginDeptId = localStorage.getItem('department_id');
+    const deptOpts = loginDeptId
+        ? depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('')
+        : '<option value="default">Default (Show All)</option>' + depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+    
+    const trDept = document.getElementById('tr-dept');
+    if (trDept) {
+        trDept.innerHTML = deptOpts;
+        const savedDept = loginDeptId || localStorage.getItem('savedDept');
+        if (savedDept && Array.from(trDept.options).some(o => o.value === savedDept)) {
+            trDept.value = savedDept;
+            localStorage.setItem('savedDept', savedDept);
+            loadDeptData();
+        }
+        trDept.disabled = !!loginDeptId;
+    }
+    
+    const subDept = document.getElementById('sub-dept');
+    const facDept = document.getElementById('fac-dept');
+    const strictDeptOpts = '<option value="">Select Department</option>' + depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+    if (subDept) {
+        subDept.innerHTML = strictDeptOpts;
+        if (loginDeptId) {
+            subDept.value = loginDeptId;
+            subDept.disabled = true;
+        }
+    }
+    if (facDept) {
+        facDept.innerHTML = strictDeptOpts;
+        if (loginDeptId) {
+            facDept.value = loginDeptId;
+            facDept.disabled = true;
+        }
+    }
+
+    const subjects = await apiCall('/api/subjects');
+    allTheorySubjects = subjects.filter(s => s.type === 'Theory');
+    
+    allFaculties = await apiCall('/api/faculty');
+    
+    const rooms = await apiCall('/api/rooms');
+    allRooms = rooms;
+    const theoryRooms = rooms.filter(r => r.type === 'Theory');
+    document.getElementById('tr-room').innerHTML = theoryRooms.map(r => `<option value="${r.id}">${roomLabel(r)}</option>`).join('');
+    
+    loadDeptData();
+}
+
+function loadDeptData() {
+    const deptId = document.getElementById('tr-dept').value;
+    localStorage.setItem('savedDept', deptId);
+    const subSelect = document.getElementById('tr-subject');
+    const facSelect = document.getElementById('tr-faculty');
+    
+    if(!deptId) return;
+    
+    let filteredSubs = allTheorySubjects;
+    let filteredFacs = allFaculties;
+    
+    if(deptId !== 'default') {
+        filteredSubs = allTheorySubjects.filter(s => s.department_id == deptId);
+        filteredFacs = allFaculties.filter(f => facultyBelongsToDepartment(f, deptId));
+    }
+    
+    subSelect.innerHTML = filteredSubs.map(s => `<option value="${s.id}">${s.code} - ${s.name}</option>`).join('');
+    facSelect.innerHTML = `<option value="">Select Faculty</option>` + filteredFacs.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+    loadSavedTheoryRequirements();
+    loadTheorySectionOptions(true);
+}
+
+function setupTheorySavedListRefresh() {
+    const yearInput = document.getElementById('tr-year');
+    if (yearInput) yearInput.addEventListener('change', loadSavedTheoryRequirements);
+    ['tr-sem', 'tr-year'].forEach(id => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        field.addEventListener('change', () => loadTheorySectionOptions(true));
+    });
+}
+
+async function loadTheorySectionOptions(useDefault = false) {
+    const options = document.getElementById('tr-section-options');
+    const sectionInput = document.getElementById('tr-sec');
+    if (!options || !sectionInput) return;
+
+    const params = new URLSearchParams();
+    const deptId = document.getElementById('tr-dept').value;
+    const semester = document.getElementById('tr-sem').value;
+    const year = document.getElementById('tr-year').value.trim();
+    if (deptId && deptId !== 'default') params.set('department_id', deptId);
+    if (semester) params.set('semester', semester);
+    if (year) params.set('academic_year', year);
+
+    try {
+        const sections = await apiCall(`/api/sections?${params.toString()}`);
+        options.innerHTML = sections.map(item => `<option value="${escapeText(item.section)}"></option>`).join('');
+        if (useDefault && !sectionInput.value.trim() && sections.length) {
+            sectionInput.value = sections[0].section;
+        }
+    } catch (e) {
+        options.innerHTML = '';
+    }
+}
+
+function savedTheoryRequirementHtml(item) {
+    const subject = `${item.subject_code} - ${item.subject}`;
+    return `
+        <div class="saved-requirement-row" data-feed-id="${Number(item.id)}">
+            <span><strong>${escapeText(subject)}</strong><small>${escapeText(item.department || 'Department not set')} | ${escapeText(item.academic_year)}</small></span>
+            <span>${escapeText(item.faculty || '-')}<small>${escapeText(item.room || '-')}</small></span>
+            <span>Sem ${escapeText(item.semester)}</span>
+            <span>Sec ${escapeText(item.section)}</span>
+            <span>Theory</span>
+            <span>${escapeText(item.weekly_hours)} hrs</span>
+            <button type="button" class="feed-alter-btn" onclick="alterSavedTheoryRequirement(${Number(item.id)})" title="Alter saved theory requirement">Alter</button>
+            <button type="button" class="feed-delete-btn" onclick="deleteSavedTheoryRequirement(${Number(item.id)})" title="Delete saved theory requirement" aria-label="Delete saved theory requirement">X</button>
+        </div>
+    `;
+}
+
+function showTheoryFeedStatus(message) {
+    const status = document.getElementById('saved-theory-status');
+    if (!status) return;
+    status.textContent = message;
+    status.hidden = false;
+}
+
+function clearTheoryFeedStatus() {
+    const status = document.getElementById('saved-theory-status');
+    if (status) status.hidden = true;
+    document.querySelectorAll('#saved-theory-list .duplicate-highlight').forEach(row => row.classList.remove('duplicate-highlight'));
+}
+
+function highlightSavedTheoryRequirement(id) {
+    const row = document.querySelector(`#saved-theory-list [data-feed-id="${Number(id)}"]`);
+    if (!row) return;
+    row.classList.add('duplicate-highlight');
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelTheoryAlter() {
+    document.getElementById('tr-edit-id').value = '';
+    document.getElementById('tr-edit-status').hidden = true;
+    clearTheoryFeedStatus();
+}
+
+function alterSavedTheoryRequirement(id) {
+    const item = savedTheoryRequirements.find(record => Number(record.id) === Number(id));
+    if (!item) return;
+
+    const deptSelect = document.getElementById('tr-dept');
+    if (item.department_id && Array.from(deptSelect.options).some(option => String(option.value) === String(item.department_id))) {
+        deptSelect.value = item.department_id;
+    }
+    loadDeptData();
+    const subjectSelect = document.getElementById('tr-subject');
+    const facultySelect = document.getElementById('tr-faculty');
+    const roomSelect = document.getElementById('tr-room');
+    if (Array.from(subjectSelect.options).some(option => String(option.value) === String(item.subject_id))) subjectSelect.value = item.subject_id;
+    if (Array.from(facultySelect.options).some(option => String(option.value) === String(item.faculty_id))) facultySelect.value = item.faculty_id;
+    if (Array.from(roomSelect.options).some(option => String(option.value) === String(item.room_id))) roomSelect.value = item.room_id;
+    document.getElementById('tr-sem').value = item.semester;
+    document.getElementById('tr-sec').value = item.section;
+    document.getElementById('tr-hours').value = item.weekly_hours;
+    document.getElementById('tr-year').value = item.academic_year;
+    document.getElementById('tr-edit-id').value = item.id;
+    document.getElementById('tr-edit-status').hidden = false;
+    loadTheorySectionOptions(false);
+    showTheoryFeedStatus('Editing saved theory requirement. Save the form to update it.');
+    highlightSavedTheoryRequirement(item.id);
+    document.getElementById('theoryReqForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function deleteSavedTheoryRequirement(id) {
+    if (!confirm('Delete this saved theory requirement?')) return;
+    try {
+        const res = await apiCall(`/api/theory-requirements/${id}`, 'DELETE');
+        showToast(res.msg || 'Saved theory requirement deleted');
+        clearTheoryFeedStatus();
+        await loadSavedTheoryRequirements();
+    } catch (e) {
+        showToast(e.message || 'Could not delete saved theory requirement', 'error');
+    }
+}
+
+async function loadSavedTheoryRequirements() {
+    const list = document.getElementById('saved-theory-list');
+    const count = document.getElementById('saved-theory-count');
+    const panel = list ? list.closest('.saved-requirements') : null;
+    if (!list || !count) return;
+
+    const params = new URLSearchParams();
+    const deptId = document.getElementById('tr-dept').value;
+    const year = document.getElementById('tr-year').value.trim();
+    if (year) params.set('academic_year', year);
+    if (deptId && deptId !== 'default') params.set('department_id', deptId);
+
+    try {
+        savedTheoryRequirements = await apiCall(`/api/theory-requirements?${params.toString()}`);
+        count.innerText = `${savedTheoryRequirements.length} saved`;
+        if (panel) panel.classList.toggle('has-items', savedTheoryRequirements.length > 0);
+        list.innerHTML = savedTheoryRequirements.length
+            ? savedTheoryRequirements.map(savedTheoryRequirementHtml).join('')
+            : 'No saved theory requirements for this department and year yet.';
+    } catch (e) {
+        count.innerText = '0 saved';
+        list.innerText = e.message || 'Could not load saved theory requirements.';
+        if (panel) panel.classList.remove('has-items');
+    }
+}
+
+async function addDept() {
+    const nameInput = document.getElementById('new-dept-name');
+    await apiCall('/api/departments', 'POST', { name: nameInput.value, priority: 1 });
+    nameInput.value = '';
+    closeModal('addDeptModal');
+    showToast('Department Added');
+    loadDropdowns();
+}
+
+async function addSubject() {
+    const codeInput = document.getElementById('sub-code');
+    const nameInput = document.getElementById('sub-name');
+    const typeInput = document.getElementById('sub-type');
+    const deptInput = document.getElementById('sub-dept');
+    
+    if (!deptInput.value) { showToast('Please select a department', 'error'); return; }
+    
+    await apiCall('/api/subjects', 'POST', { code: codeInput.value, name: nameInput.value, subject_type: typeInput.value, department_id: deptInput.value });
+    codeInput.value = '';
+    nameInput.value = '';
+    closeModal('addSubModal');
+    showToast('Theory Subject Added');
+    loadDropdowns();
+}
+
+async function addFaculty() {
+    const nameInput = document.getElementById('fac-name');
+    const deptInput = document.getElementById('fac-dept');
+    
+    if (!deptInput.value) { showToast('Please select a department', 'error'); return; }
+    
+    await apiCall('/api/faculty', 'POST', { name: nameInput.value, home_department_id: deptInput.value, capability: 'Both' });
+    nameInput.value = '';
+    closeModal('addFacultyModal');
+    showToast('Faculty Added');
+    loadDropdowns();
+}
+
+async function addRoom() {
+    const nameInput = document.getElementById('room-name');
+    const typeInput = document.getElementById('room-type');
+    await apiCall('/api/rooms', 'POST', { name: nameInput.value, room_type: typeInput.value });
+    nameInput.value = '';
+    closeModal('addRoomModal');
+    showToast('Room Added');
+    loadDropdowns();
+}
+
+document.getElementById('theoryReqForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearTheoryFeedStatus();
+    const data = {
+        subject_id: document.getElementById('tr-subject').value,
+        faculty_id: document.getElementById('tr-faculty').value,
+        room_id: document.getElementById('tr-room').value,
+        semester: document.getElementById('tr-sem').value,
+        section: document.getElementById('tr-sec').value,
+        weekly_hours: document.getElementById('tr-hours').value,
+        academic_year: document.getElementById('tr-year').value
+    };
+    
+    try {
+        const editId = document.getElementById('tr-edit-id').value;
+        const res = await apiCall(editId ? `/api/theory-requirements/${editId}` : '/api/theory-requirements', editId ? 'PUT' : 'POST', data);
+        await loadSavedTheoryRequirements();
+        await loadTheorySectionOptions(false);
+        if (res.duplicate) {
+            showToast(res.msg || 'This theory requirement is already saved.', 'error');
+            showTheoryFeedStatus(res.msg || 'This theory requirement is already saved.');
+            highlightSavedTheoryRequirement(res.id);
+            return;
+        }
+
+        showToast(res.msg || (editId ? 'Saved theory requirement updated' : 'Theory class requirement added successfully!'));
+        if (editId) {
+            cancelTheoryAlter();
+            return;
+        }
+        
+        if (document.getElementById('keep-data').value === 'true') {
+            document.getElementById('tr-sec').value = '';
+            document.getElementById('tr-sec').focus();
+        } else {
+            e.target.reset();
+            const savedDept = localStorage.getItem('savedDept');
+            const deptSelect = document.getElementById('tr-dept');
+            if (savedDept && Array.from(deptSelect.options).some(option => option.value === savedDept)) {
+                deptSelect.value = savedDept;
+            }
+            loadDeptData();
+            document.getElementById('tr-sec').focus();
+        }
+    } catch (error) {
+        showToast(error.message || 'Error adding theory class', 'error');
+    }
+});
+</script>
+
+{% endblock %}

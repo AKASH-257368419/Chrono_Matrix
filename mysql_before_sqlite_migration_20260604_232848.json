@@ -1,0 +1,37 @@
+{
+  "departments": [],
+  "faculty": [],
+  "faculty_department_mapping": [],
+  "faculty_availability": [],
+  "subjects": [],
+  "rooms": [],
+  "lab_requirements": [],
+  "theory_requirements": [],
+  "schedules": [],
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "password_hash": "scrypt:32768:8:1$qZ7uyK4NZKyWIOEY$fd8118f440cd0a43848a13db4857abe73a8625e5608d9bb4b02c9feb5a851754e95fdb1cc7a8ed67ed0fdf12b08835a8d8ab701c77b39fc3d2f125dca57c34d1",
+      "role": "Admin",
+      "department_id": null,
+      "faculty_id": null
+    },
+    {
+      "id": 2,
+      "username": "faculty",
+      "password_hash": "scrypt:32768:8:1$G7SzmlUisYYjMajS$da36f6f78288d31454dfcc8d0551fad816e51068b7de314d88b3966d9501dd9440d43f0aba67ffda59f2b57d986c5fe2cae74b7721fdb2c123142327b1a4f582",
+      "role": "Faculty",
+      "department_id": null,
+      "faculty_id": null
+    },
+    {
+      "id": 3,
+      "username": "student",
+      "password_hash": "scrypt:32768:8:1$Lbzk3YnmSRiigFM0$d0d957e99e52397b2022cdd168b285326dac0a6b29cc742556638e67576b49c56340ca5543f9b7a2034262007bde31661586fb84e4e66a36b2034939928cba20",
+      "role": "Student",
+      "department_id": null,
+      "faculty_id": null
+    }
+  ]
+}

@@ -1,0 +1,854 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header-flex">
+    <h2>📅 View Timetable</h2>
+    <div>
+        <select id="tt-dept" class="form-group" style="margin-bottom: 0; width:150px;" onchange="handleTimetableDeptChange()">
+            <option value="">Select Dept</option>
+        </select>
+        <input type="text" id="tt-year" class="form-group" value="2025-26" style="width:100px; margin-bottom: 0;">
+        <select id="tt-sem" class="form-group" style="margin-bottom: 0;">
+            <option value="">Select Semester</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+        </select>
+        <select id="tt-sec" class="form-group" style="width:130px; margin-bottom: 0;">
+            <option value="">Section</option>
+        </select>
+        <select id="tt-teacher" class="form-group" style="width:180px; margin-bottom: 0;">
+            <option value="">Class Teacher</option>
+        </select>
+        <select id="tt-hod" class="form-group" style="width:190px; margin-bottom: 0;">
+            <option value="">Head of Department</option>
+        </select>
+        <select id="tt-fac" class="form-group" style="display:none; margin-bottom: 0; width:150px;">
+            <option value="">Select Faculty</option>
+        </select>
+        <button id="tt-availability-btn" class="btn btn-secondary" style="display:none;" onclick="window.location.href='/faculty-availability'">My Availability</button>
+        <button class="btn btn-secondary" onclick="loadTimetable()">View</button>
+        <button class="btn" style="background: var(--success);" onclick="window.print()">🖨️ Print / Save PDF</button>
+    </div>
+</div>
+
+<div class="glass-card timetable-wrapper">
+    <div id="output-feed-status" class="output-feed-status">
+        Select department, semester, and section to show output from saved Lab and Theory feed.
+    </div>
+    <div id="output-meta" class="output-meta" hidden></div>
+    <table class="timetable" id="timetableGrid">
+        <thead>
+            <tr>
+                <th>Day / Time</th>
+                <th>8:30 - 9:20</th>
+                <th>9:20 - 10:10</th>
+                <th>10:10 - 11:00</th>
+                <th class="cell-break">Short Break</th>
+                <th>11:15 - 12:05</th>
+                <th>12:05 - 12:55</th>
+                <th class="cell-break">Lunch</th>
+                <th>1:30 - 2:20</th>
+                <th>2:20 - 3:10</th>
+                <th>3:10 - 4:00</th>
+            </tr>
+        </thead>
+        <tbody id="tt-body">
+            <!-- Rendered by JS -->
+        </tbody>
+    </table>
+
+    <table class="timetable" id="courseSummaryGrid" style="display:none; margin-top: 2rem;">
+        <thead>
+            <tr>
+                <th>Course Code</th>
+                <th>Course Name</th>
+                <th>Course Shorthand</th>
+                <th>Faculty Name</th>
+                <th>Hrs / Week</th>
+                <th id="th-class-teacher">Class Teacher</th>
+                <th id="th-hod">Head of Department</th>
+            </tr>
+        </thead>
+        <tbody id="summary-body">
+            <!-- Rendered by JS -->
+        </tbody>
+    </table>
+
+    <div id="signature-panel" class="signature-panel" hidden>
+        <div class="signature-box">
+            <div class="signature-line"></div>
+            <strong>Class Teacher Signature</strong>
+            <span id="signature-class-teacher">-</span>
+        </div>
+        <div class="signature-box">
+            <div class="signature-line"></div>
+            <strong>Head of Department Signature</strong>
+            <span id="signature-hod">-</span>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="timetableEntryModal">
+    <div class="modal-content">
+        <h3 id="tt-entry-title">Timetable Entry</h3>
+        <input type="hidden" id="tt-entry-mode" value="add">
+        <div class="form-group" id="tt-entry-existing-wrap" style="display:none;">
+            <label>Select Existing Entry</label>
+            <select id="tt-entry-existing" onchange="fillTimetableEntryFromSelected()"></select>
+        </div>
+        <div class="two-col-grid">
+            <div class="form-group">
+                <label>Subject</label>
+                <select id="tt-entry-subject"></select>
+            </div>
+            <div class="form-group">
+                <label>Faculty</label>
+                <select id="tt-entry-faculty"></select>
+            </div>
+            <div class="form-group">
+                <label>Room</label>
+                <select id="tt-entry-room"></select>
+            </div>
+            <div class="form-group">
+                <label>Class Type</label>
+                <select id="tt-entry-type">
+                    <option value="Theory">Theory</option>
+                    <option value="Lab">Lab</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Day</label>
+                <select id="tt-entry-day"></select>
+            </div>
+            <div class="form-group">
+                <label>Start Time Slot</label>
+                <select id="tt-entry-slot"></select>
+            </div>
+            <div class="form-group">
+                <label>Slot Duration</label>
+                <select id="tt-entry-duration">
+                    <option value="1">1 slot</option>
+                    <option value="2">2 slots</option>
+                    <option value="3">3 slots</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Semester</label>
+                <input type="number" id="tt-entry-sem" min="1" max="8">
+            </div>
+            <div class="form-group">
+                <label>Section</label>
+                <input type="text" id="tt-entry-sec">
+            </div>
+            <div class="form-group">
+                <label>Batch</label>
+                <input type="text" id="tt-entry-batch">
+            </div>
+        </div>
+        <div style="display:flex; gap:1rem; margin-top:1rem;">
+            <button class="btn" onclick="saveTimetableEntry()">Save Entry</button>
+            <button class="btn btn-secondary" onclick="closeModal('timetableEntryModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const TT_SLOTS = ['8:30 - 9:20', '9:20 - 10:10', '10:10 - 11:00', '11:15 - 12:05', '12:05 - 12:55', '1:30 - 2:20', '2:20 - 3:10', '3:10 - 4:00'];
+let isFacultyMode = localStorage.getItem('role') === 'Faculty';
+let isAdminMode = localStorage.getItem('role') === 'Admin';
+let currentSchedules = [];
+let ttSubjects = [];
+let ttFaculties = [];
+let ttRooms = [];
+const TT_SECTION_STORE = 'chronoTimetableSectionsByDept';
+const TT_CLASS_TEACHER_STORE = 'chronoTimetableClassTeachers';
+const TT_HOD_STORE = 'chronoTimetableHeadsOfDepartment';
+
+document.addEventListener('DOMContentLoaded', async () => {
+    if (isAdminMode) {
+        document.querySelectorAll('.timetable-edit-control').forEach(control => {
+            control.style.display = 'inline-block';
+        });
+    }
+
+    if (isFacultyMode) {
+        document.getElementById('tt-sem').style.display = 'none';
+        document.getElementById('tt-sec').style.display = 'none';
+        document.getElementById('tt-teacher').style.display = 'none';
+        document.getElementById('tt-hod').style.display = 'none';
+        document.getElementById('tt-fac').style.display = 'inline-block';
+        document.getElementById('tt-availability-btn').style.display = 'inline-block';
+        document.getElementById('output-feed-status').innerText = 'Your timetable will appear here after admin generates it.';
+    }
+
+    try {
+        const depts = await apiCall('/api/departments');
+        const deptSelect = document.getElementById('tt-dept');
+        depts.forEach(d => {
+            deptSelect.innerHTML += `<option value="${d.id}">${d.name}</option>`;
+        });
+        const loginDeptId = localStorage.getItem('department_id');
+        const savedDept = loginDeptId || localStorage.getItem('savedDept');
+        if (savedDept && Array.from(deptSelect.options).some(o => o.value === savedDept)) {
+            deptSelect.value = savedDept;
+            localStorage.setItem('savedDept', savedDept);
+        }
+        deptSelect.disabled = !!loginDeptId;
+        await loadTimetableEditorData();
+        await handleTimetableDeptChange();
+        document.getElementById('tt-sec').addEventListener('change', () => {
+            saveTimetableSection();
+            restoreClassTeacherSelection();
+        });
+        document.getElementById('tt-sem').addEventListener('change', () => populateSectionSuggestions(true));
+        document.getElementById('tt-year').addEventListener('change', () => {
+            populateSectionSuggestions(true);
+            restoreHodSelection();
+        });
+        document.getElementById('tt-teacher').addEventListener('change', saveClassTeacherSelection);
+        document.getElementById('tt-hod').addEventListener('change', saveHodSelection);
+        if (isFacultyMode && localStorage.getItem('faculty_id')) {
+            await loadTimetable();
+        }
+    } catch (e) { console.error('Failed to load departments', e); }
+});
+
+function readLocalJson(key, fallback) {
+    try {
+        return JSON.parse(localStorage.getItem(key)) || fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
+
+function writeLocalJson(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+}
+
+function escapeOptionText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+function getSelectedDeptId() {
+    return document.getElementById('tt-dept').value || '';
+}
+
+function facultyMatchesDept(faculty, deptId) {
+    return facultyBelongsToDepartment(faculty, deptId);
+}
+
+function getSectionValue() {
+    return document.getElementById('tt-sec').value.trim();
+}
+
+function classTeacherKey() {
+    const deptId = getSelectedDeptId();
+    const section = getSectionValue();
+    return deptId && section ? `${deptId}::${section.toLowerCase()}` : '';
+}
+
+function hodKey() {
+    const deptId = getSelectedDeptId();
+    const year = document.getElementById('tt-year').value.trim() || 'all';
+    return deptId ? `${deptId}::${year}` : '';
+}
+
+function addUniqueSection(sections, value) {
+    const cleaned = String(value || '').trim();
+    if (!cleaned) return;
+    if (cleaned.toLowerCase().includes('lab')) return;
+    if (!sections.some(section => section.toLowerCase() === cleaned.toLowerCase())) {
+        sections.push(cleaned);
+    }
+}
+
+async function feedSectionsForSelection() {
+    const deptId = getSelectedDeptId();
+    const year = document.getElementById('tt-year').value.trim();
+    const semester = document.getElementById('tt-sem').value;
+    const params = new URLSearchParams();
+    if (year) params.set('academic_year', year);
+    if (deptId) params.set('department_id', deptId);
+    if (semester) params.set('semester', semester);
+
+    const savedSections = await apiCall(`/api/sections?${params.toString()}`);
+    const sections = [];
+    savedSections.forEach(item => addUniqueSection(sections, item.section));
+
+    const sectionsByDept = readLocalJson(TT_SECTION_STORE, {});
+    (sectionsByDept[deptId] || []).forEach(section => addUniqueSection(sections, section));
+    return sections.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+async function populateSectionSuggestions(useLastSection = false) {
+    const deptId = getSelectedDeptId();
+    const semester = document.getElementById('tt-sem').value || 'all';
+    const sectionSelect = document.getElementById('tt-sec');
+    const previousSection = sectionSelect.value.trim();
+
+    sectionSelect.innerHTML = '<option value="">Loading sections...</option>';
+    try {
+        const sections = await feedSectionsForSelection();
+        if (sections.length === 0) {
+            sectionSelect.innerHTML = '<option value="">No saved sections</option>';
+            restoreClassTeacherSelection();
+            return;
+        }
+
+        sectionSelect.innerHTML = '<option value="">Select Section</option>' + sections
+            .map(section => `<option value="${escapeOptionText(section)}">${escapeOptionText(section)}</option>`)
+            .join('');
+
+        const lastSection = localStorage.getItem(`chronoLastSection:${deptId}:${semester}`) ||
+            localStorage.getItem(`chronoLastSection:${deptId}`) ||
+            '';
+        const hasSection = value => sections.some(section => section.toLowerCase() === String(value || '').trim().toLowerCase());
+        const nextSection = useLastSection && hasSection(lastSection)
+            ? lastSection.trim()
+            : hasSection(previousSection)
+                ? previousSection
+                : sections[0];
+
+        sectionSelect.value = nextSection;
+        saveTimetableSection();
+        restoreClassTeacherSelection();
+    } catch (e) {
+        sectionSelect.innerHTML = '<option value="">Section load failed</option>';
+        showToast(e.message || 'Could not load sections from feed', 'error');
+    }
+}
+
+function saveTimetableSection() {
+    const deptId = getSelectedDeptId();
+    const semester = document.getElementById('tt-sem').value || 'all';
+    const section = getSectionValue();
+    if (!deptId || !section) return;
+
+    const sectionsByDept = readLocalJson(TT_SECTION_STORE, {});
+    const existing = sectionsByDept[deptId] || [];
+    if (!existing.some(item => item.toLowerCase() === section.toLowerCase())) {
+        existing.push(section);
+        existing.sort((a, b) => a.localeCompare(b));
+        sectionsByDept[deptId] = existing;
+        writeLocalJson(TT_SECTION_STORE, sectionsByDept);
+    }
+    localStorage.setItem(`chronoLastSection:${deptId}:${semester}`, section);
+    localStorage.setItem(`chronoLastSection:${deptId}`, section);
+}
+
+function populateClassTeacherList() {
+    const teacherSelect = document.getElementById('tt-teacher');
+    const deptId = getSelectedDeptId();
+    const previousValue = teacherSelect.value;
+    const faculties = deptId ? ttFaculties.filter(f => facultyMatchesDept(f, deptId)) : ttFaculties;
+    teacherSelect.innerHTML = '<option value="">Class Teacher</option>' +
+        faculties.map(f => `<option value="${f.id}">${escapeOptionText(f.name)}</option>`).join('');
+
+    if (previousValue && Array.from(teacherSelect.options).some(option => option.value === previousValue)) {
+        teacherSelect.value = previousValue;
+    }
+    restoreClassTeacherSelection();
+}
+
+function populateHodList() {
+    const hodSelect = document.getElementById('tt-hod');
+    const deptId = getSelectedDeptId();
+    const previousValue = hodSelect.value;
+    const faculties = deptId ? ttFaculties.filter(f => facultyMatchesDept(f, deptId)) : ttFaculties;
+    hodSelect.innerHTML = '<option value="">Head of Department</option>' +
+        faculties.map(f => `<option value="${f.id}">${escapeOptionText(f.name)}</option>`).join('');
+
+    if (previousValue && Array.from(hodSelect.options).some(option => option.value === previousValue)) {
+        hodSelect.value = previousValue;
+    }
+    restoreHodSelection();
+}
+
+function saveClassTeacherSelection() {
+    const key = classTeacherKey();
+    if (!key) return;
+    const teachers = readLocalJson(TT_CLASS_TEACHER_STORE, {});
+    teachers[key] = document.getElementById('tt-teacher').value;
+    writeLocalJson(TT_CLASS_TEACHER_STORE, teachers);
+}
+
+function restoreClassTeacherSelection() {
+    const teacherSelect = document.getElementById('tt-teacher');
+    const key = classTeacherKey();
+    if (!key) {
+        teacherSelect.value = '';
+        return;
+    }
+    const teachers = readLocalJson(TT_CLASS_TEACHER_STORE, {});
+    const savedTeacher = teachers[key];
+    if (savedTeacher && Array.from(teacherSelect.options).some(option => option.value === savedTeacher)) {
+        teacherSelect.value = savedTeacher;
+    }
+}
+
+function saveHodSelection() {
+    const key = hodKey();
+    if (!key) return;
+    const heads = readLocalJson(TT_HOD_STORE, {});
+    heads[key] = document.getElementById('tt-hod').value;
+    writeLocalJson(TT_HOD_STORE, heads);
+}
+
+function restoreHodSelection() {
+    const hodSelect = document.getElementById('tt-hod');
+    const key = hodKey();
+    if (!key) {
+        hodSelect.value = '';
+        return;
+    }
+    const heads = readLocalJson(TT_HOD_STORE, {});
+    const savedHod = heads[key];
+    if (savedHod && Array.from(hodSelect.options).some(option => option.value === savedHod)) {
+        hodSelect.value = savedHod;
+    }
+}
+
+async function handleTimetableDeptChange() {
+    const deptId = getSelectedDeptId();
+    localStorage.setItem('savedDept', deptId);
+    if (isFacultyMode) {
+        await loadDeptFacultyTT();
+        return;
+    }
+    await populateSectionSuggestions(true);
+    populateClassTeacherList();
+    populateHodList();
+}
+
+async function loadDeptFacultyTT() {
+    const deptId = document.getElementById('tt-dept').value;
+    const facSelect = document.getElementById('tt-fac');
+    const loginFacultyId = localStorage.getItem('faculty_id');
+    const loginFacultyName = localStorage.getItem('faculty_name');
+    facSelect.innerHTML = '<option value="">Select Faculty</option>';
+    facSelect.disabled = false;
+    if (!deptId) {
+        if (loginFacultyId && loginFacultyName) {
+            facSelect.innerHTML = `<option value="${loginFacultyId}">${escapeOptionText(loginFacultyName)}</option>`;
+            facSelect.value = loginFacultyId;
+            facSelect.disabled = true;
+        }
+        return;
+    }
+    try {
+        let faculties = await apiCall('/api/faculty');
+        faculties = faculties.filter(f => facultyMatchesDept(f, deptId));
+        if (loginFacultyId && !faculties.some(f => String(f.id) === String(loginFacultyId)) && loginFacultyName) {
+            faculties.push({ id: loginFacultyId, name: loginFacultyName, department_id: deptId });
+        }
+        faculties.forEach(f => {
+            facSelect.innerHTML += `<option value="${f.id}">${escapeOptionText(f.name)}</option>`;
+        });
+        if (loginFacultyId && faculties.some(f => String(f.id) === String(loginFacultyId))) {
+            facSelect.value = loginFacultyId;
+            facSelect.disabled = true;
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function loadTimetableEditorData() {
+    [ttSubjects, ttFaculties, ttRooms] = await Promise.all([
+        apiCall('/api/subjects'),
+        apiCall('/api/faculty'),
+        apiCall('/api/rooms')
+    ]);
+}
+
+function ttOptions(items, labelFn, selectedId = '') {
+    return items.map(item => `<option value="${item.id}" ${String(item.id) === String(selectedId) ? 'selected' : ''}>${labelFn(item)}</option>`).join('');
+}
+
+function sameValue(a, b) {
+    return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+}
+
+function sectionMatchesFeed(item, section) {
+    return sameValue(item.section, section) || sameValue(item.batch, section);
+}
+
+async function loadSavedOutputFeed(deptId, year, semester, section) {
+    const params = new URLSearchParams();
+    if (year) params.set('academic_year', year);
+    if (deptId) params.set('department_id', deptId);
+
+    const [labs, theories] = await Promise.all([
+        apiCall(`/api/lab-requirements?${params.toString()}`),
+        apiCall(`/api/theory-requirements?${params.toString()}`)
+    ]);
+
+    return {
+        labs: labs.filter(item => sameValue(item.semester, semester) && sectionMatchesFeed(item, section)),
+        theories: theories.filter(item => sameValue(item.semester, semester) && sectionMatchesFeed(item, section))
+    };
+}
+
+function scheduleMatchesSavedFeed(schedule, feed) {
+    if ((schedule.type || '').includes('Lab')) {
+        return feed.labs.some(item =>
+            sameValue(item.subject_id, schedule.subject_id) &&
+            sameValue(item.main_faculty_id, schedule.faculty_id) &&
+            sameValue(item.room_id, schedule.room_id) &&
+            sameValue(item.semester, schedule.semester) &&
+            sameValue(item.academic_year, schedule.academic_year) &&
+            (sectionMatchesFeed(item, schedule.section) || sectionMatchesFeed(item, schedule.batch))
+        );
+    }
+
+    return feed.theories.some(item =>
+        sameValue(item.subject_id, schedule.subject_id) &&
+        sameValue(item.faculty_id, schedule.faculty_id) &&
+        sameValue(item.room_id, schedule.room_id) &&
+        sameValue(item.semester, schedule.semester) &&
+        sameValue(item.academic_year, schedule.academic_year) &&
+        sectionMatchesFeed(item, schedule.section)
+    );
+}
+
+function updateOutputMeta(deptName, semester, section, classTeacherName, hodName) {
+    const meta = document.getElementById('output-meta');
+    if (!meta) return;
+    if (isFacultyMode) {
+        if (!deptName && !classTeacherName) {
+            meta.hidden = true;
+            return;
+        }
+        meta.hidden = false;
+        const year = document.getElementById('tt-year').value.trim() || '-';
+        meta.innerHTML = `
+            <span><strong>Department:</strong> ${escapeOptionText(deptName || '-')}</span>
+            <span><strong>Faculty:</strong> ${escapeOptionText(classTeacherName || '-')}</span>
+            <span><strong>Academic Year:</strong> ${escapeOptionText(year)}</span>
+        `;
+        return;
+    }
+    if (!deptName && !semester && !section) {
+        meta.hidden = true;
+        return;
+    }
+    meta.hidden = false;
+    meta.innerHTML = `
+        <span><strong>Department:</strong> ${escapeOptionText(deptName || '-')}</span>
+        <span><strong>Semester:</strong> ${escapeOptionText(semester || '-')}</span>
+        <span><strong>Section:</strong> ${escapeOptionText(section || '-')}</span>
+        <span><strong>Class Teacher:</strong> ${escapeOptionText(classTeacherName || '-')}</span>
+        <span><strong>HOD:</strong> ${escapeOptionText(hodName || '-')}</span>
+    `;
+}
+
+function updateOutputFeedStatus(feed, hiddenCount = 0) {
+    const status = document.getElementById('output-feed-status');
+    if (!status) return;
+
+    const total = feed.labs.length + feed.theories.length;
+    status.classList.toggle('warning', total === 0 || hiddenCount > 0);
+    if (total === 0) {
+        status.innerText = 'No saved Lab/Theory feed found for this selection. Output is hidden until you save feed data.';
+        return;
+    }
+
+    const hiddenText = hiddenCount > 0 ? ` ${hiddenCount} old output row${hiddenCount > 1 ? 's were' : ' was'} hidden because it no longer matches saved feed.` : '';
+    status.innerText = `Output is based on saved feed: ${feed.labs.length} lab requirement${feed.labs.length !== 1 ? 's' : ''} and ${feed.theories.length} theory requirement${feed.theories.length !== 1 ? 's' : ''}.${hiddenText}`;
+}
+
+function fillTimetableEntryLists(selected = {}) {
+    const deptId = document.getElementById('tt-dept').value;
+    const subjects = deptId ? ttSubjects.filter(s => String(s.department_id) === String(deptId)) : ttSubjects;
+    const faculties = deptId ? ttFaculties.filter(f => facultyMatchesDept(f, deptId)) : ttFaculties;
+    const rooms = deptId ? ttRooms.filter(r => !r.department_id || String(r.department_id) === String(deptId)) : ttRooms;
+
+    document.getElementById('tt-entry-subject').innerHTML = ttOptions(subjects, s => `${s.code} - ${s.name}`, selected.subject_id);
+    document.getElementById('tt-entry-faculty').innerHTML = ttOptions(faculties, f => f.name, selected.faculty_id);
+    document.getElementById('tt-entry-room').innerHTML = ttOptions(rooms, r => `${r.name} (${r.type})`, selected.room_id);
+    document.getElementById('tt-entry-day').innerHTML = DAYS.map(day => `<option value="${day}" ${day === selected.day ? 'selected' : ''}>${day}</option>`).join('');
+    document.getElementById('tt-entry-slot').innerHTML = TT_SLOTS.map((slot, index) => `<option value="${index}" ${Number(selected.slot_index) === index ? 'selected' : ''}>${slot}</option>`).join('');
+    document.getElementById('tt-entry-type').value = selected.type || 'Theory';
+    document.getElementById('tt-entry-duration').value = selected.duration || (selected.type === 'Lab' ? '2' : '1');
+    document.getElementById('tt-entry-sem').value = selected.semester || document.getElementById('tt-sem').value || '';
+    document.getElementById('tt-entry-sec').value = selected.section || document.getElementById('tt-sec').value.trim() || '';
+    document.getElementById('tt-entry-batch').value = selected.batch || '';
+}
+
+async function openTimetableEntryModal(mode) {
+    if (!isAdminMode) {
+        showToast('Timetable editing is available only for administrators.', 'error');
+        return;
+    }
+
+    if (ttSubjects.length === 0) await loadTimetableEditorData();
+    document.getElementById('tt-entry-mode').value = mode;
+    document.getElementById('tt-entry-title').innerText = mode === 'add' ? 'Add Timetable Entry' : 'Alter Timetable Entry';
+    document.getElementById('tt-entry-existing-wrap').style.display = mode === 'alter' ? 'block' : 'none';
+
+    if (mode === 'alter') {
+        if (currentSchedules.length === 0) {
+            showToast('Click View first, then choose Alter Entry.', 'error');
+            return;
+        }
+        document.getElementById('tt-entry-existing').innerHTML = currentSchedules.map(s => `<option value="${s.id}">${s.subject_code} - ${s.subject} (${s.day}, ${TT_SLOTS[s.slot_index] || 'slot ' + s.slot_index})</option>`).join('');
+        fillTimetableEntryFromSelected();
+    } else {
+        fillTimetableEntryLists({});
+    }
+    openModal('timetableEntryModal');
+}
+
+function fillTimetableEntryFromSelected() {
+    const id = document.getElementById('tt-entry-existing').value;
+    const selected = currentSchedules.find(s => String(s.id) === String(id));
+    if (selected) fillTimetableEntryLists(selected);
+}
+
+async function saveTimetableEntry() {
+    if (!isAdminMode) {
+        showToast('Timetable editing is available only for administrators.', 'error');
+        return;
+    }
+
+    const mode = document.getElementById('tt-entry-mode').value;
+    const payload = {
+        subject_id: document.getElementById('tt-entry-subject').value,
+        faculty_id: document.getElementById('tt-entry-faculty').value,
+        room_id: document.getElementById('tt-entry-room').value,
+        schedule_type: document.getElementById('tt-entry-type').value,
+        day: document.getElementById('tt-entry-day').value,
+        slot_index: document.getElementById('tt-entry-slot').value,
+        duration_slots: document.getElementById('tt-entry-duration').value,
+        semester: document.getElementById('tt-entry-sem').value,
+        section: document.getElementById('tt-entry-sec').value.trim(),
+        batch: document.getElementById('tt-entry-batch').value.trim(),
+        academic_year: document.getElementById('tt-year').value
+    };
+
+    if (!payload.subject_id || !payload.faculty_id || !payload.room_id || !payload.semester || !payload.section) {
+        showToast('Please fill subject, faculty, room, semester, and section.', 'error');
+        return;
+    }
+
+    try {
+        const existingId = document.getElementById('tt-entry-existing').value;
+        const endpoint = mode === 'alter' ? `/api/schedules/${existingId}` : '/api/schedules';
+        const method = mode === 'alter' ? 'PUT' : 'POST';
+        const res = await apiCall(endpoint, method, payload);
+        showToast(res.msg || 'Timetable entry saved');
+        closeModal('timetableEntryModal');
+        await loadTimetable();
+    } catch (e) {
+        showToast(e.message || 'Could not save timetable entry', 'error');
+    }
+}
+
+async function loadTimetable() {
+    const year = document.getElementById('tt-year').value;
+    const deptId = document.getElementById('tt-dept').value;
+    
+    let url = `/api/timetable?academic_year=${year}${deptId ? '&department_id='+deptId : ''}`;
+    let teacherName = '-';
+    let hodName = '-';
+    let savedFeed = { labs: [], theories: [] };
+    let sem = '';
+    let sec = '';
+    const deptSelect = document.getElementById('tt-dept');
+    const deptName = deptSelect.value ? deptSelect.options[deptSelect.selectedIndex].text : '-';
+
+    if (isFacultyMode) {
+        const facSelect = document.getElementById('tt-fac');
+        const facId = localStorage.getItem('faculty_id') || facSelect.value;
+        if (!facId) { showToast('Please select a faculty member', 'error'); return; }
+        if (!facSelect.value && Array.from(facSelect.options).some(option => option.value === String(facId))) {
+            facSelect.value = facId;
+        }
+        url += `&faculty_id=${facId}`;
+        teacherName = facSelect.value ? facSelect.options[facSelect.selectedIndex].text : (localStorage.getItem('faculty_name') || '-');
+    } else {
+        sem = document.getElementById('tt-sem').value;
+        sec = document.getElementById('tt-sec').value.trim();
+        if(!sem || !sec) { showToast('Please select semester and section', 'error'); return; }
+        saveTimetableSection();
+        saveClassTeacherSelection();
+        saveHodSelection();
+        url += `&semester=${sem}&section=${encodeURIComponent(sec)}`;
+        const teacherSelect = document.getElementById('tt-teacher');
+        teacherName = teacherSelect.value ? teacherSelect.options[teacherSelect.selectedIndex].text : '-';
+        const hodSelect = document.getElementById('tt-hod');
+        hodName = hodSelect.value ? hodSelect.options[hodSelect.selectedIndex].text : '-';
+    }
+    
+    try {
+        if (!isFacultyMode) savedFeed = await loadSavedOutputFeed(deptId, year, sem, sec);
+        const schedules = await apiCall(url);
+        const visibleSchedules = isFacultyMode ? schedules : schedules.filter(schedule => scheduleMatchesSavedFeed(schedule, savedFeed));
+        currentSchedules = visibleSchedules;
+        updateOutputMeta(deptName, sem, sec, teacherName, hodName);
+        renderGrid(visibleSchedules);
+        renderSummary(visibleSchedules, teacherName, hodName, savedFeed);
+        if (!isFacultyMode) {
+            updateOutputFeedStatus(savedFeed, schedules.length - visibleSchedules.length);
+        } else {
+            const status = document.getElementById('output-feed-status');
+            status.classList.toggle('warning', visibleSchedules.length === 0);
+            status.innerText = visibleSchedules.length
+                ? `Showing timetable for ${teacherName}.`
+                : `No timetable generated yet for ${teacherName}. Ask admin to generate after entering Lab/Theory feed.`;
+        }
+    } catch(err) {
+        showToast('Error loading timetable', 'error');
+    }
+}
+
+function renderGrid(schedules) {
+    const tbody = document.getElementById('tt-body');
+    let html = '';
+    
+    DAYS.forEach(day => {
+        let displayDay = day;
+        if (day === 'Saturday') displayDay = `Saturday<br><span style="font-size: 0.75rem; font-weight: normal; color: rgba(255,255,255,0.5);">(2nd & 4th Working)</span>`;
+        let row = `<tr><th style="vertical-align: middle;">${displayDay}</th>`;
+        let slots = new Array(8).fill(null);
+        
+        schedules.filter(s => s.day === day).forEach(s => {
+            for(let i=0; i<s.duration; i++) {
+                slots[s.slot_index + i] = s;
+            }
+        });
+        
+        let skip = 0;
+        for(let i=0; i<8; i++) {
+            if(skip > 0) { skip--; continue; }
+            if(i === 3 || i === 5) { // 3 is Short Break, 5 is Lunch Break
+                row += `<td></td>`;
+            }
+            if(day === 'Saturday' && i === 5) {
+                row += `<td colspan="3" style="background: rgba(255, 255, 255, 0.02); text-align: center; vertical-align: middle; letter-spacing: 4px; font-weight: bold; color: var(--text-muted);">HALF DAY</td>`;
+                skip = 2; // skip slots 6 and 7
+                continue;
+            }
+            if(slots[i]) {
+                const s = slots[i];
+                const bg = s.type.includes('Lab') ? 'cell-lab' : 'cell-theory';
+                row += `<td class="${bg}" colspan="${s.duration}">
+                    <div style="font-weight:600; font-size:1.1rem;">${s.subject}</div>
+                    <div style="font-size:0.85rem; margin-top:0.3rem;">👤 ${s.faculty}</div>
+                    <div style="font-size:0.85rem; color:var(--text-muted);">🚪 ${s.room}</div>
+                </td>`;
+                skip = s.duration - 1;
+            } else {
+                row += `<td>-</td>`;
+            }
+        }
+        row += `</tr>`;
+        html += row;
+    });
+    tbody.innerHTML = html;
+}
+
+function matchingRequirementForSchedule(schedule, savedFeed = { labs: [], theories: [] }) {
+    const isLab = (schedule.type || '').includes('Lab');
+    const items = isLab ? (savedFeed.labs || []) : (savedFeed.theories || []);
+    return items.find(item => {
+        const sameCommon =
+            sameValue(item.subject_id, schedule.subject_id) &&
+            sameValue(item.room_id, schedule.room_id) &&
+            sameValue(item.semester, schedule.semester) &&
+            sameValue(item.academic_year, schedule.academic_year);
+        if (!sameCommon) return false;
+        if (isLab) {
+            return sameValue(item.main_faculty_id, schedule.faculty_id) &&
+                (sectionMatchesFeed(item, schedule.section) || sectionMatchesFeed(item, schedule.batch));
+        }
+        return sameValue(item.faculty_id, schedule.faculty_id) &&
+            sectionMatchesFeed(item, schedule.section);
+    });
+}
+
+function renderSummary(schedules, teacherName, hodName, savedFeed = { labs: [], theories: [] }) {
+    const grid = document.getElementById('courseSummaryGrid');
+    const tbody = document.getElementById('summary-body');
+    const thClassTeacher = document.getElementById('th-class-teacher');
+    const thHod = document.getElementById('th-hod');
+    const signaturePanel = document.getElementById('signature-panel');
+    
+    if (schedules.length === 0) {
+        grid.style.display = 'none';
+        if (signaturePanel) {
+            signaturePanel.hidden = isFacultyMode;
+            document.getElementById('signature-class-teacher').innerText = teacherName || '-';
+            document.getElementById('signature-hod').innerText = hodName || '-';
+        }
+        return;
+    }
+    
+    grid.style.display = 'table';
+    if (signaturePanel) {
+        signaturePanel.hidden = isFacultyMode;
+        document.getElementById('signature-class-teacher').innerText = teacherName || '-';
+        document.getElementById('signature-hod').innerText = hodName || '-';
+    }
+    if(isFacultyMode && thClassTeacher) thClassTeacher.style.display = 'none';
+    if(isFacultyMode && thHod) thHod.style.display = 'none';
+    
+    let summary = {};
+    
+    schedules.forEach(s => {
+        const summaryKey = `${s.subject_id || s.subject_code}::${(s.type || '').includes('Lab') ? 'Lab' : 'Theory'}`;
+        const requirement = matchingRequirementForSchedule(s, savedFeed);
+        if(!summary[summaryKey]) {
+            summary[summaryKey] = {
+                code: s.subject_code,
+                name: s.subject,
+                short: s.subject.substring(0, 4),
+                faculty: new Set(),
+                hours: 0,
+                requiredHours: requirement ? Number(requirement.weekly_hours) : null
+            };
+        }
+        summary[summaryKey].faculty.add(s.faculty);
+        if (requirement && summary[summaryKey].requiredHours === null) {
+            summary[summaryKey].requiredHours = Number(requirement.weekly_hours);
+        }
+        summary[summaryKey].hours += s.duration;
+    });
+    
+    let html = '';
+    const summaryList = Object.values(summary);
+    summaryList.forEach((c, index) => {
+        let extraTd = '';
+        let hodTd = '';
+        if (!isFacultyMode && index === 0) {
+            extraTd = `<td rowspan="${summaryList.length}" style="vertical-align: middle; font-weight: bold; font-size: 1.1rem; background: rgba(255, 255, 255, 0.02);">${teacherName}</td>`;
+            hodTd = `<td rowspan="${summaryList.length}" style="vertical-align: middle; font-weight: bold; font-size: 1.1rem; background: rgba(255, 255, 255, 0.02);">${hodName}</td>`;
+        }
+        html += `<tr>
+            <td>${c.code}</td>
+            <td>${c.name}</td>
+            <td>${c.short}</td>
+            <td>${Array.from(c.faculty).join(', ')}</td>
+            <td>${c.requiredHours ?? c.hours}</td>
+            ${extraTd}
+            ${hodTd}
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+}
+</script>
+{% endblock %}

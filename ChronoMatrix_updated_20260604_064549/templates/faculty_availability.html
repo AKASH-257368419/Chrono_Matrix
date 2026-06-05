@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header-flex">
+    <h2>👨‍🏫 Faculty Availability</h2>
+    <button class="btn" style="background: var(--success);" onclick="globalGenerateTimetable()">🚀 Generate Timetable</button>
+</div>
+
+<div class="glass-card">
+    <div class="two-col-grid" style="max-width: 800px; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div class="form-group">
+            <label>Select Department</label>
+            <select id="fa-dept" onchange="loadDeptFaculty()">
+                <option value="">Select Department</option>
+                <!-- Loaded via JS -->
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Select Faculty</label>
+            <select id="fa-faculty" onchange="loadAvailability()" disabled>
+                <option value="">Select Department First</option>
+            </select>
+        </div>
+    </div>
+    <div id="faculty-assigned-departments" class="saved-requirements" style="display:none; margin-top: 1rem;"></div>
+
+    <div id="availability-grid" style="display:none; margin-top: 2rem;">
+        <h3>Available Time Slots</h3>
+        <p style="color: var(--text-muted); margin-bottom: 1rem;">Check the boxes when the faculty is available.</p>
+        
+        <table class="timetable">
+            <thead>
+                <tr>
+                    <th>Day</th>
+                    <th>8:30 - 9:20</th>
+                    <th>9:20 - 10:10</th>
+                    <th>10:10 - 11:00</th>
+                    <th>11:15 - 12:05</th>
+                    <th>12:05 - 12:55</th>
+                    <th>1:30 - 2:20</th>
+                    <th>2:20 - 3:10</th>
+                    <th>3:10 - 4:00</th>
+                </tr>
+            </thead>
+            <tbody id="fa-body">
+                <!-- JS will render -->
+            </tbody>
+        </table>
+        
+        <button class="btn" style="margin-top: 1.5rem; max-width: 200px;" onclick="saveAvailability()">Save Availability</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allFaculties = [];
+let pendingFacultyId = null;
+
+function escapeFacultyText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+async function loadMyAssignedDepartments() {
+    const panel = document.getElementById('faculty-assigned-departments');
+    if (!panel || localStorage.getItem('role') !== 'Faculty') return;
+    try {
+        const assignments = await apiCall('/api/interdepartment-faculty/my');
+        const homeDepartment = localStorage.getItem('department_name');
+        const goingTo = assignments
+            .map(item => item.department_name)
+            .filter(Boolean);
+        const details = [
+            homeDepartment ? `<strong>Home:</strong> ${escapeFacultyText(homeDepartment)}` : '',
+            goingTo.length ? `<strong>Going to:</strong> ${goingTo.map(escapeFacultyText).join(', ')}` : '<strong>Going to:</strong> No extra department assigned'
+        ].filter(Boolean).join(' &nbsp; ');
+        panel.innerHTML = details;
+        panel.classList.add('has-items');
+        panel.style.display = 'block';
+    } catch (e) {
+        panel.innerHTML = 'Could not load assigned departments.';
+        panel.style.display = 'block';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const isFacultyMode = localStorage.getItem('role') === 'Faculty';
+        const loginDeptId = localStorage.getItem('department_id');
+        const loginFacultyId = localStorage.getItem('faculty_id');
+        const targetDept = params.get('department_id') || loginDeptId || localStorage.getItem('savedDept');
+        pendingFacultyId = params.get('faculty_id') || loginFacultyId || localStorage.getItem('savedFaculty');
+
+        if (isFacultyMode) {
+            const generateButton = document.querySelector('button[onclick="globalGenerateTimetable()"]');
+            if (generateButton) generateButton.style.display = 'none';
+            const header = document.querySelector('.header-flex');
+            if (header && !document.getElementById('fa-view-timetable-btn')) {
+                const viewButton = document.createElement('button');
+                viewButton.id = 'fa-view-timetable-btn';
+                viewButton.type = 'button';
+                viewButton.className = 'btn btn-secondary';
+                viewButton.textContent = 'View My Timetable';
+                viewButton.onclick = () => { window.location.href = '/timetable'; };
+                header.appendChild(viewButton);
+            }
+            await loadMyAssignedDepartments();
+        }
+
+        const depts = await apiCall('/api/departments');
+        const deptSelect = document.getElementById('fa-dept');
+        depts.forEach(d => {
+            deptSelect.innerHTML += `<option value="${d.id}">${d.name}</option>`;
+        });
+        
+        allFaculties = await apiCall('/api/faculty');
+        if (targetDept && Array.from(deptSelect.options).some(o => o.value === targetDept)) {
+            deptSelect.value = targetDept;
+            if (isFacultyMode && loginDeptId) deptSelect.disabled = true;
+            loadDeptFaculty();
+        }
+    } catch (e) {
+        showToast('Error loading data', 'error');
+    }
+});
+
+function loadDeptFaculty() {
+    const deptId = document.getElementById('fa-dept').value;
+    localStorage.setItem('savedDept', deptId);
+    const facSelect = document.getElementById('fa-faculty');
+    const grid = document.getElementById('availability-grid');
+    
+    facSelect.innerHTML = '<option value="">Select Faculty</option>';
+    grid.style.display = 'none';
+    
+    if(!deptId) {
+        facSelect.disabled = true;
+        facSelect.innerHTML = '<option value="">Select Department First</option>';
+        return;
+    }
+    
+    facSelect.disabled = false;
+    const filteredFacs = allFaculties.filter(f => facultyBelongsToDepartment(f, deptId));
+    
+    if(filteredFacs.length === 0) {
+        facSelect.innerHTML = '<option value="">No faculty in this dept</option>';
+        facSelect.disabled = true;
+    } else {
+        filteredFacs.forEach(f => {
+            facSelect.innerHTML += `<option value="${f.id}">${f.name}</option>`;
+        });
+        if (pendingFacultyId && filteredFacs.some(f => String(f.id) === String(pendingFacultyId))) {
+            facSelect.value = pendingFacultyId;
+            pendingFacultyId = null;
+            if (localStorage.getItem('role') === 'Faculty' && localStorage.getItem('faculty_id')) {
+                facSelect.disabled = true;
+            }
+            loadAvailability();
+        }
+    }
+}
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+async function loadAvailability() {
+    const fid = document.getElementById('fa-faculty').value;
+    if (fid) localStorage.setItem('savedFaculty', fid);
+    if(fid) {
+        document.getElementById('availability-grid').style.display = 'block';
+        const tbody = document.getElementById('fa-body');
+        
+        let unavail = [];
+        try {
+            unavail = await apiCall(`/api/availability/${fid}`);
+        } catch(e) {}
+        
+        let html = '';
+        DAYS.forEach(day => {
+            html += `<tr><td>${day}</td>`;
+            for(let i=0; i<8; i++) {
+                const isUnavail = unavail.some(u => u.day === day && u.slot === i);
+                const checked = isUnavail ? '' : 'checked';
+                html += `<td><input type="checkbox" id="cb-${day}-${i}" ${checked}></td>`;
+            }
+            html += `</tr>`;
+        });
+        tbody.innerHTML = html;
+    } else {
+        document.getElementById('availability-grid').style.display = 'none';
+    }
+}
+
+async function saveAvailability() {
+    if(!confirm("Are you sure you want to save these availability settings?")) return;
+    const fid = document.getElementById('fa-faculty').value;
+    if(!fid) return;
+    
+    let unavailData = [];
+    DAYS.forEach(day => {
+        for(let i=0; i<8; i++) {
+            const cb = document.getElementById(`cb-${day}-${i}`);
+            if(cb && !cb.checked) {
+                unavailData.push({day: day, slot: i});
+            }
+        }
+    });
+    
+    try {
+        const res = await apiCall(`/api/availability/${fid}`, 'POST', unavailData);
+        showToast(res.msg || 'Availability saved!');
+    } catch(e) {
+        showToast('Failed to save availability', 'error');
+    }
+}
+</script>
+{% endblock %}

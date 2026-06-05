@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="glass-card" style="max-width: 520px; margin: 4rem auto 2rem;">
+    <h2 style="margin-bottom: 2rem; text-align: center;">S Admin Control</h2>
+
+    <form id="superDeptCreateForm" style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border-color);">
+        <div class="form-group">
+            <label>Add Department</label>
+            <input type="text" id="super-department-name" placeholder="Department name">
+        </div>
+        <button type="submit" class="btn">Add Department</button>
+    </form>
+
+    <div style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border-color);">
+        <div class="form-group">
+            <label>Create Admin</label>
+            <button type="button" class="btn" onclick="window.location.href='/department-admin-access'">Create Department Admin</button>
+        </div>
+    </div>
+
+    <form id="superDeptDeleteForm" style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border-color);">
+        <div class="form-group">
+            <label>Delete Department</label>
+            <select id="super-delete-department">
+                <option value="">Select Department</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-secondary">Delete Department</button>
+    </form>
+
+    <div style="display: grid; gap: 1rem;">
+        <button type="button" class="btn btn-secondary" onclick="window.location.href='/dashboard'">View Dashboard</button>
+    </div>
+</div>
+
+<div class="glass-card" id="admin-password-card" style="max-width: 520px; margin: 2rem auto; display: none;">
+    <h3 style="margin-bottom: 1.5rem; text-align: center;">Change Admin Password</h3>
+    <form id="adminPasswordForm">
+        <div class="form-group">
+            <label>Admin Account</label>
+            <select id="admin-password-user" required>
+                <option value="">Select Admin</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>New Password</label>
+            <div style="position: relative;">
+                <input type="password" id="admin-new-password" placeholder="New password" style="padding-right: 90px;" required>
+                <button type="button" class="password-toggle-btn" onclick="toggleAdminPassword()">Show</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Confirm New Password</label>
+            <input type="password" id="admin-confirm-password" placeholder="Confirm new password" required>
+        </div>
+        <button type="submit" class="btn btn-secondary">Update Password</button>
+    </form>
+</div>
+
+<div class="glass-card" style="max-width: 760px; margin: 2rem auto;">
+    <div class="header-flex" style="margin-bottom: 1rem;">
+        <h3 style="margin: 0;">Departments</h3>
+    </div>
+    <div class="timetable-wrapper">
+        <table class="timetable">
+            <thead>
+                <tr>
+                    <th>Department</th>
+                    <th>Priority</th>
+                </tr>
+            </thead>
+            <tbody id="super-departments-body">
+                <tr><td colspan="2">No departments loaded.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    if (!localStorage.getItem('token')) {
+        window.location.href = '/';
+        return;
+    }
+    if (localStorage.getItem('is_global_admin') !== 'true') {
+        showToast('Only S Admin can open this page.', 'error');
+        setTimeout(() => window.location.href = '/dashboard', 800);
+        return;
+    }
+
+    document.getElementById('superDeptCreateForm').addEventListener('submit', addSuperDepartment);
+    document.getElementById('superDeptDeleteForm').addEventListener('submit', deleteSuperDepartment);
+    document.getElementById('adminPasswordForm').addEventListener('submit', changeAdminPassword);
+    await loadSuperAdminDepartments();
+    await loadAdminPasswordOptions();
+});
+
+async function loadSuperAdminDepartments() {
+    try {
+        const departments = await apiCall('/api/departments');
+        const deleteSelect = document.getElementById('super-delete-department');
+        const tbody = document.getElementById('super-departments-body');
+
+        deleteSelect.innerHTML = '<option value="">Select Department</option>';
+        departments.forEach(dept => {
+            deleteSelect.innerHTML += `<option value="${dept.id}">${escapeHtml(dept.name)}</option>`;
+        });
+
+        if (departments.length === 0) {
+            deleteSelect.innerHTML = '<option value="">No departments created</option>';
+            tbody.innerHTML = '<tr><td colspan="2">No departments created yet.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = departments.map(dept => `
+            <tr>
+                <td>${escapeHtml(dept.name)}</td>
+                <td>${dept.priority}</td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        showToast(err.message || 'Could not load departments', 'error');
+    }
+}
+
+async function addSuperDepartment(event) {
+    event.preventDefault();
+    const input = document.getElementById('super-department-name');
+    const name = input.value.trim();
+    if (!name) {
+        showToast('Enter department name.', 'error');
+        return;
+    }
+
+    try {
+        const res = await apiCall('/api/departments', 'POST', { name, priority: 1 });
+        showToast(res.msg || 'Department added');
+        input.value = '';
+        await loadSuperAdminDepartments();
+        await loadAdminPasswordOptions();
+    } catch (err) {
+        showToast(err.message || 'Could not add department', 'error');
+    }
+}
+
+async function deleteSuperDepartment(event) {
+    event.preventDefault();
+    const select = document.getElementById('super-delete-department');
+    const id = select.value;
+    if (!id) {
+        showToast('Select department to delete.', 'error');
+        return;
+    }
+    const name = select.options[select.selectedIndex].text;
+    if (!confirm(`Delete ${name} and all linked records?`)) return;
+
+    try {
+        const res = await apiCall(`/api/departments/${id}`, 'DELETE');
+        showToast(res.msg || 'Department deleted');
+        await loadSuperAdminDepartments();
+        await loadAdminPasswordOptions();
+    } catch (err) {
+        showToast(err.message || 'Could not delete department', 'error');
+    }
+}
+
+async function loadAdminPasswordOptions() {
+    try {
+        const admins = await apiCall('/api/admin-users');
+        const select = document.getElementById('admin-password-user');
+        const card = document.getElementById('admin-password-card');
+        const departmentAdmins = admins.filter(admin => admin.department_id);
+        card.style.display = departmentAdmins.length > 0 ? 'block' : 'none';
+        select.innerHTML = '<option value="">Select Admin</option>';
+        departmentAdmins.forEach(admin => {
+            select.innerHTML += `<option value="${admin.id}">${escapeHtml(admin.username)} - ${escapeHtml(admin.department || 'Department')}</option>`;
+        });
+        select.disabled = departmentAdmins.length === 0;
+    } catch (err) {
+        showToast(err.message || 'Could not load admin accounts', 'error');
+    }
+}
+
+async function changeAdminPassword(event) {
+    event.preventDefault();
+    const adminId = document.getElementById('admin-password-user').value;
+    const newPassword = document.getElementById('admin-new-password').value;
+    const confirmPassword = document.getElementById('admin-confirm-password').value;
+
+    if (!adminId) {
+        showToast('Select admin account.', 'error');
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        showToast('New passwords do not match.', 'error');
+        return;
+    }
+
+    try {
+        const res = await apiCall(`/api/admin-users/${adminId}/password`, 'PUT', {
+            new_password: newPassword
+        });
+        showToast(res.msg || 'Password updated');
+        document.getElementById('admin-new-password').value = '';
+        document.getElementById('admin-confirm-password').value = '';
+    } catch (err) {
+        showToast(err.message || 'Could not update password', 'error');
+    }
+}
+
+function toggleAdminPassword() {
+    const input = document.getElementById('admin-new-password');
+    const button = document.querySelector('#adminPasswordForm .password-toggle-btn');
+    const shouldShow = input.type === 'password';
+    input.type = shouldShow ? 'text' : 'password';
+    button.textContent = shouldShow ? 'Hide' : 'Show';
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+</script>
+{% endblock %}

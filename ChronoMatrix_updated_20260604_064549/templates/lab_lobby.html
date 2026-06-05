@@ -1,0 +1,613 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header-flex">
+    <h2>🧪 Lab Scheduling Lobby</h2>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button class="btn" style="background: var(--success);" onclick="globalGenerateTimetable('lab')">Generate Lab Only</button>
+        <button class="btn btn-secondary" onclick="window.location.href='/theory-lobby'">Continue to Theory</button>
+    </div>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button class="btn btn-secondary dept-admin-hidden" onclick="openModal('addDeptModal')">+ Dept</button>
+        <button class="btn dept-admin-hidden" style="background: var(--danger); border: none; padding: 0.5rem;" onclick="openDeleteModal('dept')">🗑️</button>
+        
+        <button class="btn btn-secondary" onclick="openModal('addRoomModal')">+ Room</button>
+        <button class="btn" style="background: var(--danger); border: none; padding: 0.5rem;" onclick="openDeleteModal('room')">🗑️</button>
+        
+        <button class="btn btn-secondary" onclick="openModal('addSubModal')">+ Subject</button>
+        <button class="btn" style="background: var(--danger); border: none; padding: 0.5rem;" onclick="openDeleteModal('sub')">🗑️</button>
+    </div>
+</div>
+
+<div class="glass-card">
+    <h3 style="margin-bottom: 1.5rem;">Add Lab Requirement</h3>
+    <form id="labReqForm" class="two-col-grid">
+        <div class="form-group">
+            <label>Department</label>
+            <select id="lr-dept" required onchange="loadSubjects()"></select>
+        </div>
+        <div class="form-group">
+            <label>Subject</label>
+            <select id="lr-subject" required></select>
+        </div>
+        <div class="form-group">
+            <label>Main Faculty</label>
+            <select id="lr-main-faculty" required></select>
+        </div>
+        <div class="form-group">
+            <label>Assistant Faculty (Optional)</label>
+            <select id="lr-asst-faculty"></select>
+        </div>
+        <div class="form-group">
+            <label>Lab Room</label>
+            <select id="lr-room" required></select>
+        </div>
+        <div class="form-group">
+            <label>Semester</label>
+            <input type="number" id="lr-sem" min="1" max="8" required>
+        </div>
+        <div class="form-group">
+            <label>Section</label>
+            <input type="text" id="lr-sec" list="lr-section-options" required>
+            <datalist id="lr-section-options"></datalist>
+        </div>
+        <div class="form-group">
+            <label>Student Batch</label>
+            <input type="text" id="lr-batch" required>
+        </div>
+        <div class="form-group">
+            <label>Weekly Hours</label>
+            <input type="number" id="lr-hours" required>
+        </div>
+        <div class="form-group">
+            <label>Academic Year</label>
+            <input type="text" id="lr-year" value="2025-26" required>
+        </div>
+        <div style="grid-column: span 2; display: flex; gap: 1rem;">
+            <button type="submit" class="btn" onclick="document.getElementById('keep-data').value='false'">Save & Clear Form</button>
+            <button type="submit" class="btn btn-secondary" onclick="document.getElementById('keep-data').value='true'">Save & Add Another Batch</button>
+            <input type="hidden" id="keep-data" value="false">
+            <input type="hidden" id="lr-edit-id" value="">
+        </div>
+        <div id="lr-edit-status" class="feed-edit-status" style="grid-column: span 2;" hidden>
+            Altering saved lab requirement.
+            <button type="button" onclick="cancelLabAlter()">Cancel Alter</button>
+        </div>
+        <div class="saved-requirements" style="grid-column: span 2;">
+            <div class="saved-requirements-header">
+                <h4>Saved Lab Requirements</h4>
+                <span id="saved-lab-count">0 saved</span>
+            </div>
+            <div id="saved-lab-status" class="feed-status" hidden></div>
+            <div id="saved-lab-list" class="saved-requirements-list">
+                Saved lab requirements will appear here after you save them.
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Modals for dynamic addition -->
+<!-- Add Dept Modal -->
+<div class="modal-overlay" id="addDeptModal">
+    <div class="modal-content">
+        <h3>Add Department</h3>
+        <form onsubmit="event.preventDefault(); addDept();">
+            <input type="text" id="new-dept-name" placeholder="Department Name" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:1rem;" required>
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addDeptModal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Subject Modal -->
+<div class="modal-overlay" id="addSubModal">
+    <div class="modal-content">
+        <h3>Add Subject</h3>
+        <form onsubmit="event.preventDefault(); addSubject();">
+            <input type="text" id="sub-code" placeholder="Subject Code" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:1rem;" required>
+            <input type="text" id="sub-name" placeholder="Subject Name" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:0.5rem;" required>
+            <select id="sub-type" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:0.5rem;">
+                <option value="Core Lab">Core Lab (150 mins)</option>
+                <option value="Integrated Lab">Integrated Lab (100 mins)</option>
+            </select>
+            <select id="sub-dept" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:0.5rem;"></select>
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addSubModal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Faculty Modal -->
+<div class="modal-overlay" id="addFacultyModal">
+    <div class="modal-content">
+        <h3>Add Faculty</h3>
+        <form onsubmit="event.preventDefault(); addFaculty();">
+            <input type="text" id="fac-name" placeholder="Faculty Name" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:1rem;" required>
+            <select id="fac-dept" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:0.5rem;"></select>
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addFacultyModal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Room Modal -->
+<div class="modal-overlay" id="addRoomModal">
+    <div class="modal-content">
+        <h3>Add Room</h3>
+        <form onsubmit="event.preventDefault(); addRoom();">
+            <input type="text" id="room-name" placeholder="Room Name (e.g. Lab 1)" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:1rem;" required>
+            <select id="room-type" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:0.5rem;">
+                <option value="Lab">Lab</option>
+                <option value="Theory">Theory</option>
+            </select>
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addRoomModal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Alter Modal -->
+<div class="modal-overlay" id="alterModal">
+    <div class="modal-content">
+        <h3>Alter Table</h3>
+        <div class="form-group">
+            <label>Department</label>
+            <select id="alter-department" onchange="loadAlterItems()"></select>
+        </div>
+        <div class="form-group">
+            <label>What do you want to alter?</label>
+            <select id="alter-type" onchange="loadAlterItems()">
+                <option value="faculty-name">Faculty Name</option>
+                <option value="faculty-availability">Faculty Availability</option>
+                <option value="subject-details">Subject Details</option>
+                <option value="subject-timing">Subject Day / Time</option>
+                <option value="room">Room</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label id="alter-select-label">Select Record</label>
+            <select id="alter-select" onchange="renderAlterFields()"></select>
+        </div>
+        <div id="alter-fields"></div>
+        <div style="display:flex; gap:1rem; margin-top:1rem;">
+            <button class="btn" onclick="executeAlter()">Save Changes</button>
+            <button class="btn btn-secondary" onclick="closeModal('alterModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Modals -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal-content">
+        <h3 id="del-title">Delete</h3>
+        <select id="del-select" class="form-group" style="width: 100%; padding: 0.5rem; margin-top:1rem;"></select>
+        <input type="hidden" id="del-type">
+        <div style="display:flex; gap:1rem; margin-top:1rem;">
+            <button class="btn" style="background: var(--danger);" onclick="executeDelete()">Delete</button>
+            <button class="btn btn-secondary" onclick="closeModal('deleteModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadDropdowns();
+    setupLabSelectionMemory();
+    await loadSavedLabRequirements();
+});
+
+let allLabSubjects = [];
+let allFaculties = [];
+let allRooms = [];
+let savedLabRequirements = [];
+const LAB_SELECTION_STORE = 'chronoLabRequirementSelection';
+
+function readLocalJson(key, fallback) {
+    try {
+        return JSON.parse(localStorage.getItem(key)) || fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
+
+function writeLocalJson(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+}
+
+function escapeText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+function roomLabel(room) {
+    const department = room.department || (room.department_id ? `Dept ${room.department_id}` : 'Shared');
+    return `${room.name} (${department})`;
+}
+
+function labSelectionKey() {
+    const deptId = document.getElementById('lr-dept').value || 'default';
+    return `dept:${deptId}`;
+}
+
+function selectedOptionText(id) {
+    const select = document.getElementById(id);
+    if (!select || select.selectedIndex < 0) return '-';
+    const option = select.options[select.selectedIndex];
+    return option && option.value ? option.text : '-';
+}
+
+function selectIfAvailable(id, value) {
+    const select = document.getElementById(id);
+    if (!select || !value) return false;
+    if (Array.from(select.options).some(option => String(option.value) === String(value))) {
+        select.value = value;
+        return true;
+    }
+    return false;
+}
+
+function rememberLabSelections() {
+    const store = readLocalJson(LAB_SELECTION_STORE, {});
+    store[labSelectionKey()] = {
+        subject_id: document.getElementById('lr-subject').value,
+        main_faculty_id: document.getElementById('lr-main-faculty').value,
+        asst_faculty_id: document.getElementById('lr-asst-faculty').value,
+        room_id: document.getElementById('lr-room').value,
+        semester: document.getElementById('lr-sem').value,
+        weekly_hours: document.getElementById('lr-hours').value,
+        academic_year: document.getElementById('lr-year').value
+    };
+    writeLocalJson(LAB_SELECTION_STORE, store);
+}
+
+function restoreLabSelections() {
+    const saved = readLocalJson(LAB_SELECTION_STORE, {})[labSelectionKey()] || {};
+    selectIfAvailable('lr-subject', saved.subject_id);
+    selectIfAvailable('lr-main-faculty', saved.main_faculty_id);
+    selectIfAvailable('lr-asst-faculty', saved.asst_faculty_id);
+    selectIfAvailable('lr-room', saved.room_id);
+    if (saved.semester) document.getElementById('lr-sem').value = saved.semester;
+    if (saved.weekly_hours) document.getElementById('lr-hours').value = saved.weekly_hours;
+    if (saved.academic_year) document.getElementById('lr-year').value = saved.academic_year;
+}
+
+function setupLabSelectionMemory() {
+    ['lr-subject', 'lr-main-faculty', 'lr-asst-faculty', 'lr-room', 'lr-sem', 'lr-hours', 'lr-year'].forEach(id => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        field.addEventListener(field.tagName === 'INPUT' ? 'input' : 'change', rememberLabSelections);
+    });
+    ['lr-sem', 'lr-year'].forEach(id => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        field.addEventListener('change', () => loadLabSectionOptions(true));
+    });
+    document.getElementById('lr-year').addEventListener('change', loadSavedLabRequirements);
+}
+
+async function loadLabSectionOptions(useDefault = false) {
+    const options = document.getElementById('lr-section-options');
+    const sectionInput = document.getElementById('lr-sec');
+    if (!options || !sectionInput) return;
+
+    const params = new URLSearchParams();
+    const deptId = document.getElementById('lr-dept').value;
+    const semester = document.getElementById('lr-sem').value;
+    const year = document.getElementById('lr-year').value.trim();
+    if (deptId && deptId !== 'default') params.set('department_id', deptId);
+    if (semester) params.set('semester', semester);
+    if (year) params.set('academic_year', year);
+
+    try {
+        const sections = await apiCall(`/api/sections?${params.toString()}`);
+        options.innerHTML = sections.map(item => `<option value="${escapeText(item.section)}"></option>`).join('');
+        if (useDefault && !sectionInput.value.trim() && sections.length) {
+            sectionInput.value = sections[0].section;
+        }
+    } catch (e) {
+        options.innerHTML = '';
+    }
+}
+
+function savedRequirementHtml(item) {
+    const subject = `${item.subject_code} - ${item.subject}`;
+    const faculty = item.assistant_faculty ? `${item.main_faculty} / ${item.assistant_faculty}` : item.main_faculty;
+    return `
+        <div class="saved-requirement-row" data-feed-id="${Number(item.id)}">
+            <span><strong>${escapeText(subject)}</strong><small>${escapeText(item.department || 'Department not set')} | ${escapeText(item.academic_year)}</small></span>
+            <span>${escapeText(faculty || '-')}<small>${escapeText(item.room || '-')}</small></span>
+            <span>Sem ${escapeText(item.semester)}</span>
+            <span>Sec ${escapeText(item.section)}</span>
+            <span>Batch ${escapeText(item.batch)}</span>
+            <span>${escapeText(item.weekly_hours)} hrs</span>
+            <button type="button" class="feed-alter-btn" onclick="alterSavedLabRequirement(${Number(item.id)})" title="Alter saved lab requirement">Alter</button>
+            <button type="button" class="feed-delete-btn" onclick="deleteSavedLabRequirement(${Number(item.id)})" title="Delete saved lab requirement" aria-label="Delete saved lab requirement">X</button>
+        </div>
+    `;
+}
+
+function showLabFeedStatus(message) {
+    const status = document.getElementById('saved-lab-status');
+    if (!status) return;
+    status.textContent = message;
+    status.hidden = false;
+}
+
+function clearLabFeedStatus() {
+    const status = document.getElementById('saved-lab-status');
+    if (status) status.hidden = true;
+    document.querySelectorAll('#saved-lab-list .duplicate-highlight').forEach(row => row.classList.remove('duplicate-highlight'));
+}
+
+function highlightSavedLabRequirement(id) {
+    const row = document.querySelector(`#saved-lab-list [data-feed-id="${Number(id)}"]`);
+    if (!row) return;
+    row.classList.add('duplicate-highlight');
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelLabAlter() {
+    document.getElementById('lr-edit-id').value = '';
+    document.getElementById('lr-edit-status').hidden = true;
+    clearLabFeedStatus();
+}
+
+function alterSavedLabRequirement(id) {
+    const item = savedLabRequirements.find(record => Number(record.id) === Number(id));
+    if (!item) return;
+
+    const deptSelect = document.getElementById('lr-dept');
+    if (item.department_id && Array.from(deptSelect.options).some(option => String(option.value) === String(item.department_id))) {
+        deptSelect.value = item.department_id;
+    }
+    loadSubjects();
+    selectIfAvailable('lr-subject', item.subject_id);
+    selectIfAvailable('lr-main-faculty', item.main_faculty_id);
+    selectIfAvailable('lr-asst-faculty', item.assistant_faculty_id);
+    selectIfAvailable('lr-room', item.room_id);
+    document.getElementById('lr-sem').value = item.semester;
+    document.getElementById('lr-sec').value = item.section;
+    document.getElementById('lr-batch').value = item.batch;
+    document.getElementById('lr-hours').value = item.weekly_hours;
+    document.getElementById('lr-year').value = item.academic_year;
+    document.getElementById('lr-edit-id').value = item.id;
+    document.getElementById('lr-edit-status').hidden = false;
+    loadLabSectionOptions(false);
+    showLabFeedStatus('Editing saved lab requirement. Save the form to update it.');
+    highlightSavedLabRequirement(item.id);
+    document.getElementById('labReqForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function deleteSavedLabRequirement(id) {
+    if (!confirm('Delete this saved lab requirement?')) return;
+    try {
+        const res = await apiCall(`/api/lab-requirements/${id}`, 'DELETE');
+        showToast(res.msg || 'Saved lab requirement deleted');
+        clearLabFeedStatus();
+        await loadSavedLabRequirements();
+    } catch (e) {
+        showToast(e.message || 'Could not delete saved lab requirement', 'error');
+    }
+}
+
+async function loadSavedLabRequirements() {
+    const list = document.getElementById('saved-lab-list');
+    const count = document.getElementById('saved-lab-count');
+    const panel = list ? list.closest('.saved-requirements') : null;
+    if (!list || !count) return;
+
+    const params = new URLSearchParams();
+    const deptId = document.getElementById('lr-dept').value;
+    const year = document.getElementById('lr-year').value.trim();
+    if (year) params.set('academic_year', year);
+    if (deptId && deptId !== 'default') params.set('department_id', deptId);
+
+    try {
+        savedLabRequirements = await apiCall(`/api/lab-requirements?${params.toString()}`);
+        count.innerText = `${savedLabRequirements.length} saved`;
+        if (panel) panel.classList.toggle('has-items', savedLabRequirements.length > 0);
+        list.innerHTML = savedLabRequirements.length
+            ? savedLabRequirements.map(savedRequirementHtml).join('')
+            : 'No saved lab requirements for this department and year yet.';
+    } catch (e) {
+        count.innerText = '0 saved';
+        list.innerText = e.message || 'Could not load saved lab requirements.';
+        if (panel) panel.classList.remove('has-items');
+    }
+}
+
+async function loadDropdowns() {
+    const depts = await apiCall('/api/departments');
+    const deptSelect = document.getElementById('lr-dept');
+    const subDept = document.getElementById('sub-dept');
+    const facDept = document.getElementById('fac-dept');
+    allDepts = depts;
+    const loginDeptId = localStorage.getItem('department_id');
+    const deptHtml = loginDeptId
+        ? depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('')
+        : '<option value="default">Default (Show All)</option>' + depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+    deptSelect.innerHTML = deptHtml;
+    const savedDept = loginDeptId || localStorage.getItem('savedDept');
+    if (savedDept && Array.from(deptSelect.options).some(option => option.value === savedDept)) {
+        deptSelect.value = savedDept;
+        localStorage.setItem('savedDept', savedDept);
+    }
+    deptSelect.disabled = !!loginDeptId;
+    
+    const strictDeptHtml = '<option value="">Select Department</option>' + depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+    if (subDept) {
+        subDept.innerHTML = strictDeptHtml;
+        if (loginDeptId) {
+            subDept.value = loginDeptId;
+            subDept.disabled = true;
+        }
+    }
+    if (facDept) {
+        facDept.innerHTML = strictDeptHtml;
+        if (loginDeptId) {
+            facDept.value = loginDeptId;
+            facDept.disabled = true;
+        }
+    }
+    
+    const subjects = await apiCall('/api/subjects');
+    allLabSubjects = subjects.filter(s => s.type.includes('Lab'));
+    
+    allFaculties = await apiCall('/api/faculty');
+    
+    const rooms = await apiCall('/api/rooms');
+    allRooms = rooms;
+    const labRooms = rooms.filter(r => r.type === 'Lab');
+    document.getElementById('lr-room').innerHTML = labRooms.map(r => `<option value="${r.id}">${roomLabel(r)}</option>`).join('');
+    
+    loadSubjects();
+}
+
+function loadSubjects() {
+    const deptId = document.getElementById('lr-dept').value;
+    localStorage.setItem('savedDept', deptId);
+    const subSelect = document.getElementById('lr-subject');
+    const mainFacSelect = document.getElementById('lr-main-faculty');
+    const asstFacSelect = document.getElementById('lr-asst-faculty');
+    
+    if(!deptId) return;
+    
+    let deptSubs = allLabSubjects;
+    let deptFacs = allFaculties;
+    
+    if(deptId !== 'default') {
+        deptSubs = allLabSubjects.filter(s => s.department_id == deptId);
+        deptFacs = allFaculties.filter(f => facultyBelongsToDepartment(f, deptId));
+    }
+    
+    subSelect.innerHTML = deptSubs.map(s => `<option value="${s.id}">${s.code} - ${s.name} (${s.type})</option>`).join('');
+    const fHtml = `<option value="">Select Faculty</option>` + deptFacs.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+    mainFacSelect.innerHTML = fHtml;
+    asstFacSelect.innerHTML = fHtml;
+    restoreLabSelections();
+    loadSavedLabRequirements();
+    loadLabSectionOptions(true);
+}
+
+async function addDept() {
+    const nameInput = document.getElementById('new-dept-name');
+    await apiCall('/api/departments', 'POST', { name: nameInput.value, priority: 1 });
+    nameInput.value = '';
+    closeModal('addDeptModal');
+    showToast('Department Added');
+    loadDropdowns();
+}
+
+async function addSubject() {
+    const codeInput = document.getElementById('sub-code');
+    const nameInput = document.getElementById('sub-name');
+    const typeInput = document.getElementById('sub-type');
+    const deptInput = document.getElementById('sub-dept');
+    
+    if (!deptInput.value) { showToast('Please select a department', 'error'); return; }
+    
+    await apiCall('/api/subjects', 'POST', { code: codeInput.value, name: nameInput.value, subject_type: typeInput.value, department_id: deptInput.value });
+    codeInput.value = '';
+    nameInput.value = '';
+    closeModal('addSubModal');
+    showToast('Subject Added');
+    loadDropdowns();
+}
+
+async function addFaculty() {
+    const nameInput = document.getElementById('fac-name');
+    const deptInput = document.getElementById('fac-dept');
+    
+    if (!deptInput.value) { showToast('Please select a department', 'error'); return; }
+    
+    await apiCall('/api/faculty', 'POST', { name: nameInput.value, home_department_id: deptInput.value, capability: 'Both' });
+    nameInput.value = '';
+    closeModal('addFacultyModal');
+    showToast('Faculty Added');
+    loadDropdowns();
+}
+
+async function addRoom() {
+    const nameInput = document.getElementById('room-name');
+    const typeInput = document.getElementById('room-type');
+    await apiCall('/api/rooms', 'POST', { name: nameInput.value, room_type: typeInput.value });
+    nameInput.value = '';
+    closeModal('addRoomModal');
+    showToast('Room Added');
+    loadDropdowns();
+}
+
+document.getElementById('labReqForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearLabFeedStatus();
+    rememberLabSelections();
+    const data = {
+        subject_id: document.getElementById('lr-subject').value,
+        main_faculty_id: document.getElementById('lr-main-faculty').value,
+        asst_faculty_id: document.getElementById('lr-asst-faculty').value || null,
+        room_id: document.getElementById('lr-room').value,
+        semester: document.getElementById('lr-sem').value,
+        section: document.getElementById('lr-sec').value,
+        batch: document.getElementById('lr-batch').value,
+        weekly_hours: document.getElementById('lr-hours').value,
+        academic_year: document.getElementById('lr-year').value
+    };
+    
+    let res;
+    const editId = document.getElementById('lr-edit-id').value;
+    try {
+        res = await apiCall(editId ? `/api/lab-requirements/${editId}` : '/api/lab-requirements', editId ? 'PUT' : 'POST', data);
+        await loadSavedLabRequirements();
+        await loadLabSectionOptions(false);
+    } catch (error) {
+        showToast(error.message || 'Error adding lab requirement', 'error');
+        return;
+    }
+
+    if (res.duplicate) {
+        showToast(res.msg || 'This lab requirement is already saved.', 'error');
+        showLabFeedStatus(res.msg || 'This lab requirement is already saved.');
+        highlightSavedLabRequirement(res.id);
+        return;
+    }
+
+    showToast(res.msg || (editId ? 'Saved lab requirement updated' : 'Lab Requirement added to scheduling pool!'));
+    if (editId) {
+        cancelLabAlter();
+        return;
+    }
+    
+    if (document.getElementById('keep-data').value === 'true') {
+        document.getElementById('lr-sec').value = '';
+        document.getElementById('lr-batch').value = '';
+        document.getElementById('lr-sec').focus();
+    } else {
+        e.target.reset();
+        const savedDept = localStorage.getItem('savedDept');
+        const deptSelect = document.getElementById('lr-dept');
+        if (savedDept && Array.from(deptSelect.options).some(option => option.value === savedDept)) {
+            deptSelect.value = savedDept;
+        }
+        loadSubjects();
+        document.getElementById('lr-sec').focus();
+    }
+});
+</script>
+
+{% endblock %}

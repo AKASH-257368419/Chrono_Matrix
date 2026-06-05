@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+
+{% block content %}
+<script>document.body.classList.add('auth-page');</script>
+<div class="auth-shell">
+    <section class="super-login-card">
+        <form id="superLoginForm" class="auth-panel">
+            <h2>Super Admin Login</h2>
+            <p>Login to access your account</p>
+
+            <div class="auth-field">
+                <label>Username</label>
+                <div class="auth-input-wrap">
+                    <span class="auth-input-icon auth-user-icon" aria-hidden="true"></span>
+                    <input type="text" id="super-username" placeholder="Enter username" required>
+                </div>
+            </div>
+
+            <div class="auth-field">
+                <label>Password</label>
+                <div class="auth-input-wrap">
+                    <span class="auth-input-icon auth-lock-icon" aria-hidden="true"></span>
+                    <input type="password" id="super-password" placeholder="Enter password" required>
+                    <button type="button" id="toggleSuperPassword" class="auth-eye-btn" aria-label="Show password">Show</button>
+                </div>
+            </div>
+
+            <button type="submit" class="auth-primary-btn">LOGIN</button>
+
+            <div class="auth-divider"><span>OR</span></div>
+
+            <button type="button" class="auth-link-btn" id="showCreateSAdmin">
+                Create New Super Admin
+            </button>
+
+            <button type="button" class="auth-secondary-link" id="showPortalLogin">
+                Admin / Faculty / Student Login
+            </button>
+        </form>
+
+        <form id="sAdminCreateForm" class="auth-panel" style="display: none;">
+            <h2>Create Super Admin</h2>
+            <p>Create the main account for this system</p>
+
+            <div class="auth-field">
+                <label>Username</label>
+                <div class="auth-input-wrap">
+                    <span class="auth-input-icon auth-user-icon" aria-hidden="true"></span>
+                    <input type="text" id="setup-username" placeholder="Create username">
+                </div>
+            </div>
+
+            <div class="auth-field">
+                <label>Password</label>
+                <div class="auth-input-wrap">
+                    <span class="auth-input-icon auth-lock-icon" aria-hidden="true"></span>
+                    <input type="password" id="setup-password" placeholder="Create password">
+                    <button type="button" id="toggleSetupPassword" class="auth-eye-btn" aria-label="Show password">Show</button>
+                </div>
+            </div>
+
+            <div class="auth-field">
+                <label>Confirm Password</label>
+                <div class="auth-input-wrap">
+                    <span class="auth-input-icon auth-lock-icon" aria-hidden="true"></span>
+                    <input type="password" id="setup-confirm-password" placeholder="Confirm password">
+                </div>
+            </div>
+
+            <button type="submit" class="auth-primary-btn">CREATE SUPER ADMIN</button>
+            <button type="button" class="auth-secondary-link" id="backToSuperLogin">Back to Super Admin Login</button>
+        </form>
+
+        <form id="loginForm" class="auth-panel" style="display: none;">
+            <h2>Portal Login</h2>
+            <p>Login as department admin, faculty, or student</p>
+
+            <div class="auth-field">
+                <label>Role</label>
+                <select id="role" required onchange="handleRoleChange()">
+                    <option value="Admin">Admin</option>
+                    <option value="Faculty">Faculty</option>
+                    <option value="Student">Student</option>
+                </select>
+            </div>
+
+            <div class="auth-field" id="login-department-wrap" style="display: none;">
+                <label>Department</label>
+                <select id="login-department" onchange="handleDepartmentChange()">
+                    <option value="">Select Department</option>
+                </select>
+            </div>
+
+            <div class="auth-field" id="login-faculty-wrap" style="display: none;">
+                <label>Faculty Name</label>
+                <select id="login-faculty">
+                    <option value="">Select Department First</option>
+                </select>
+            </div>
+
+            <div class="auth-field">
+                <label>Username</label>
+                <input type="text" id="username" placeholder="Enter username" required>
+            </div>
+
+            <div class="auth-field">
+                <label>Password</label>
+                <div class="auth-input-wrap">
+                    <input type="password" id="password" placeholder="Enter password" required>
+                    <button type="button" id="togglePassword" class="auth-eye-btn" aria-label="Show password">Show</button>
+                </div>
+            </div>
+
+            <button type="submit" class="auth-primary-btn">LOGIN</button>
+            <button type="button" class="auth-secondary-link" id="backToSuperLoginFromPortal">Back to Super Admin Login</button>
+        </form>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    if (localStorage.getItem('token')) {
+        redirectAfterLogin({
+            role: localStorage.getItem('role'),
+            is_global_admin: localStorage.getItem('is_global_admin') === 'true'
+        }, 0);
+        return;
+    }
+
+    await loadSAdminStatus();
+    loadLoginDepartments();
+    handleRoleChange();
+
+    document.getElementById('toggleSuperPassword').addEventListener('click', () => {
+        togglePasswordField('super-password', 'toggleSuperPassword');
+    });
+    document.getElementById('togglePassword').addEventListener('click', () => {
+        togglePasswordField('password', 'togglePassword');
+    });
+    document.getElementById('toggleSetupPassword').addEventListener('click', () => {
+        togglePasswordField('setup-password', 'toggleSetupPassword');
+    });
+
+    document.getElementById('showCreateSAdmin').addEventListener('click', showCreateSAdmin);
+    document.getElementById('showPortalLogin').addEventListener('click', showPortalLogin);
+    document.getElementById('backToSuperLogin').addEventListener('click', showSuperLogin);
+    document.getElementById('backToSuperLoginFromPortal').addEventListener('click', showSuperLogin);
+
+    document.getElementById('superLoginForm').addEventListener('submit', loginSuperAdmin);
+    document.getElementById('sAdminCreateForm').addEventListener('submit', createSAdmin);
+    document.getElementById('loginForm').addEventListener('submit', loginToPortal);
+});
+
+let loginFaculties = [];
+let hasSAdminAccount = true;
+
+async function loadSAdminStatus() {
+    try {
+        const res = await fetch('/api/s-admin/status');
+        const data = await res.json();
+        hasSAdminAccount = Boolean(data.exists);
+        showSuperLogin();
+    } catch (err) {
+        hasSAdminAccount = true;
+        showSuperLogin();
+        showToast('Could not check S Admin setup. Try login.', 'error');
+    }
+}
+
+function showPanel(panelId) {
+    ['superLoginForm', 'sAdminCreateForm', 'loginForm'].forEach(id => {
+        document.getElementById(id).style.display = id === panelId ? 'block' : 'none';
+    });
+}
+
+function showSuperLogin() {
+    showPanel('superLoginForm');
+    const createButton = document.getElementById('showCreateSAdmin');
+    createButton.textContent = hasSAdminAccount ? 'Create New Super Admin' : 'Create First Super Admin';
+}
+
+function showCreateSAdmin() {
+    if (hasSAdminAccount) {
+        showToast('Super Admin already exists. Login with the existing account.', 'error');
+        return;
+    }
+    showPanel('sAdminCreateForm');
+}
+
+function showPortalLogin() {
+    showPanel('loginForm');
+}
+
+function togglePasswordField(inputId, buttonId) {
+    const input = document.getElementById(inputId);
+    const button = document.getElementById(buttonId);
+    const shouldShow = input.type === 'password';
+    input.type = shouldShow ? 'text' : 'password';
+    button.textContent = shouldShow ? 'Hide' : 'Show';
+}
+
+async function loginSuperAdmin(event) {
+    event.preventDefault();
+    const username = document.getElementById('super-username').value.trim();
+    const password = document.getElementById('super-password').value;
+    await loginWithPayload({ role: 'SAdmin', username, password }, 'SAdmin', username);
+}
+
+async function createSAdmin(event) {
+    event.preventDefault();
+    const username = document.getElementById('setup-username').value.trim();
+    const password = document.getElementById('setup-password').value;
+    const confirmPassword = document.getElementById('setup-confirm-password').value;
+
+    if (!username || !password || !confirmPassword) {
+        showToast('Enter username, password, and confirm password.', 'error');
+        return;
+    }
+    if (password !== confirmPassword) {
+        showToast('Passwords do not match.', 'error');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast(data.error || 'Could not create Super Admin', 'error');
+            return;
+        }
+        hasSAdminAccount = true;
+        saveSession(data, 'SAdmin', username);
+        showToast(data.msg || 'Super Admin created successfully.');
+        redirectAfterLogin(data.user || { is_global_admin: true }, 700);
+    } catch (err) {
+        showToast('Setup failed', 'error');
+    }
+}
+
+async function loginToPortal(event) {
+    event.preventDefault();
+    const role = document.getElementById('role').value;
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    const departmentId = document.getElementById('login-department').value;
+    const facultyId = document.getElementById('login-faculty').value;
+
+    if (role === 'Admin' && !departmentId) {
+        showToast('Please select department for admin login', 'error');
+        return;
+    }
+
+    if (role === 'Faculty' && (departmentId || facultyId) && (!departmentId || !facultyId)) {
+        showToast('Select both department and faculty name, or leave both empty for your own faculty login', 'error');
+        return;
+    }
+
+    const payload = { role, username, password };
+    if (role === 'Admin' || (role === 'Faculty' && departmentId)) payload.department_id = departmentId;
+    if (role === 'Faculty' && facultyId) payload.faculty_id = facultyId;
+    await loginWithPayload(payload, role, username);
+}
+
+async function loginWithPayload(payload, fallbackRole, fallbackUsername) {
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            saveSession(data, fallbackRole, fallbackUsername);
+            showToast('Login successful!');
+            redirectAfterLogin(data.user || {}, 800);
+        } else {
+            showToast(data.msg || 'Login failed', 'error');
+        }
+    } catch (err) {
+        showToast('Server error', 'error');
+    }
+}
+
+function saveSession(data, fallbackRole, fallbackUsername) {
+    const user = data.user || {};
+    localStorage.setItem('token', data.access_token);
+    localStorage.setItem('role', user.role || fallbackRole);
+    localStorage.setItem('username', user.username || fallbackUsername);
+    localStorage.setItem('is_global_admin', user.is_global_admin ? 'true' : 'false');
+
+    if (user.department_id) {
+        localStorage.setItem('department_id', user.department_id);
+        localStorage.setItem('department_name', user.department || '');
+    } else {
+        localStorage.removeItem('department_id');
+        localStorage.removeItem('department_name');
+    }
+
+    if (user.faculty_id) {
+        localStorage.setItem('faculty_id', user.faculty_id);
+        localStorage.setItem('faculty_name', user.faculty || '');
+        localStorage.setItem('savedFaculty', user.faculty_id);
+    } else {
+        localStorage.removeItem('faculty_id');
+        localStorage.removeItem('faculty_name');
+        if (fallbackRole !== 'Faculty') localStorage.removeItem('savedFaculty');
+    }
+}
+
+function redirectAfterLogin(user, delay) {
+    setTimeout(() => {
+        if (user.role === 'Student') {
+            window.location.href = '/timetable';
+        } else if (user.role === 'Faculty') {
+            window.location.href = '/faculty-availability';
+        } else if (user.is_global_admin) {
+            window.location.href = '/super-admin';
+        } else {
+            window.location.href = '/dashboard';
+        }
+    }, delay);
+}
+
+async function loadLoginDepartments() {
+    const select = document.getElementById('login-department');
+    try {
+        const [deptRes, facultyRes] = await Promise.all([
+            fetch('/api/departments'),
+            fetch('/api/faculty')
+        ]);
+        const departments = await deptRes.json();
+        loginFaculties = facultyRes.ok ? await facultyRes.json() : [];
+        select.innerHTML = '<option value="">Select Department</option>';
+        departments.forEach(dept => {
+            select.innerHTML += `<option value="${dept.id}">${dept.name}</option>`;
+        });
+        if (departments.length === 0) {
+            select.innerHTML = '<option value="">S Admin must create department first</option>';
+        }
+        handleDepartmentChange();
+    } catch (err) {
+        select.innerHTML = '<option value="">Could not load departments</option>';
+        document.getElementById('login-faculty').innerHTML = '<option value="">Could not load faculty</option>';
+    }
+}
+
+function handleRoleChange() {
+    const role = document.getElementById('role').value;
+    const departmentWrap = document.getElementById('login-department-wrap');
+    const departmentSelect = document.getElementById('login-department');
+    const facultyWrap = document.getElementById('login-faculty-wrap');
+    const facultySelect = document.getElementById('login-faculty');
+    const showDepartment = role === 'Admin' || role === 'Faculty';
+    const showFaculty = role === 'Faculty';
+    departmentWrap.style.display = showDepartment ? 'block' : 'none';
+    departmentSelect.required = role === 'Admin';
+    facultyWrap.style.display = showFaculty ? 'block' : 'none';
+    facultySelect.required = false;
+    handleDepartmentChange();
+}
+
+function handleDepartmentChange() {
+    const role = document.getElementById('role').value;
+    const departmentId = document.getElementById('login-department').value;
+    const facultySelect = document.getElementById('login-faculty');
+    if (role !== 'Faculty') {
+        facultySelect.innerHTML = '<option value="">Select Department First</option>';
+        facultySelect.disabled = true;
+        return;
+    }
+
+    const faculties = loginFaculties.filter(f => facultyBelongsToDepartment(f, departmentId));
+    if (!departmentId) {
+        facultySelect.innerHTML = '<option value="">Select Department First</option>';
+        facultySelect.disabled = true;
+        return;
+    }
+    if (faculties.length === 0) {
+        facultySelect.innerHTML = '<option value="">No faculty in this department</option>';
+        facultySelect.disabled = true;
+        return;
+    }
+    facultySelect.disabled = false;
+    facultySelect.innerHTML = '<option value="">Select Faculty</option>' +
+        faculties.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+}
+</script>
+{% endblock %}

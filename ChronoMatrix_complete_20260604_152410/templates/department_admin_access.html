@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="glass-card" style="max-width: 460px; margin: 4rem auto 2rem;">
+    <h2 style="margin-bottom: 2rem; text-align: center;">Department Admin Access</h2>
+
+    <form id="deptAdminForm">
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="dept-admin-username" placeholder="Department admin username" required>
+        </div>
+
+        <div class="form-group">
+            <label>Password</label>
+            <div style="position: relative;">
+                <input type="password" id="dept-admin-password" placeholder="Password" style="padding-right: 90px;" required>
+                <button type="button" class="password-toggle-btn" onclick="toggleDepartmentAdminPassword()">Show</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Department</label>
+            <select id="dept-admin-department" required>
+                <option value="">Select Department</option>
+            </select>
+        </div>
+
+        <button type="submit" class="btn" id="create-admin-btn">Create Admin</button>
+    </form>
+</div>
+
+<div class="glass-card" style="max-width: 900px; margin: 2rem auto;">
+    <div class="header-flex" style="margin-bottom: 1rem;">
+        <h3 style="margin: 0;">Created Department Admins</h3>
+        <button type="button" class="btn btn-secondary" onclick="loadDepartmentAdminAccess()" style="width: auto;">Refresh</button>
+    </div>
+    <div class="timetable-wrapper">
+        <table class="timetable">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Department</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="admin-users-body">
+                <tr><td colspan="3">No department admins loaded.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    if (!localStorage.getItem('token')) {
+        window.location.href = '/';
+        return;
+    }
+    if (localStorage.getItem('is_global_admin') !== 'true') {
+        showToast('Only the main admin can open this page.', 'error');
+        setTimeout(() => window.location.href = '/dashboard', 800);
+        return;
+    }
+
+    document.getElementById('deptAdminForm').addEventListener('submit', createDepartmentAdmin);
+    await loadDepartmentAdminAccess();
+});
+
+async function loadDepartmentAdminAccess() {
+    try {
+        const [departments, admins] = await Promise.all([
+            apiCall('/api/departments'),
+            apiCall('/api/admin-users')
+        ]);
+
+        const deptSelect = document.getElementById('dept-admin-department');
+        const createAdminButton = document.getElementById('create-admin-btn');
+        deptSelect.innerHTML = '<option value="">Select Department</option>';
+        departments.forEach(dept => {
+            deptSelect.innerHTML += `<option value="${dept.id}">${dept.name}</option>`;
+        });
+        deptSelect.disabled = departments.length === 0;
+        createAdminButton.disabled = departments.length === 0;
+        if (departments.length === 0) {
+            deptSelect.innerHTML = '<option value="">Create department in S Admin first</option>';
+        }
+
+        const tbody = document.getElementById('admin-users-body');
+        const departmentAdmins = admins.filter(admin => admin.department_id);
+        if (departmentAdmins.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3">No department admins created yet.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = departmentAdmins.map(admin => `
+            <tr>
+                <td>${escapeHtml(admin.username)}</td>
+                <td>${escapeHtml(admin.department || '-')}</td>
+                <td><button class="btn btn-secondary" type="button" onclick="deleteDepartmentAdmin(${admin.id})">Delete</button></td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        showToast(err.message || 'Could not load admin access', 'error');
+    }
+}
+
+async function createDepartmentAdmin(event) {
+    event.preventDefault();
+    const username = document.getElementById('dept-admin-username').value.trim();
+    const password = document.getElementById('dept-admin-password').value.trim();
+    const departmentId = document.getElementById('dept-admin-department').value;
+
+    if (!username || !password || !departmentId) {
+        showToast('Enter username, password, and department.', 'error');
+        return;
+    }
+
+    try {
+        const res = await apiCall('/api/admin-users', 'POST', {
+            username,
+            password,
+            department_id: departmentId
+        });
+        showToast(res.msg || 'Department admin created');
+        document.getElementById('dept-admin-username').value = '';
+        document.getElementById('dept-admin-password').value = '';
+        await loadDepartmentAdminAccess();
+    } catch (err) {
+        showToast(err.message || 'Could not create admin', 'error');
+    }
+}
+
+async function deleteDepartmentAdmin(id) {
+    if (!confirm('Delete this department admin login?')) return;
+    try {
+        const res = await apiCall(`/api/admin-users/${id}`, 'DELETE');
+        showToast(res.msg || 'Department admin deleted');
+        await loadDepartmentAdminAccess();
+    } catch (err) {
+        showToast(err.message || 'Could not delete admin', 'error');
+    }
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+function toggleDepartmentAdminPassword() {
+    const passwordInput = document.getElementById('dept-admin-password');
+    const button = document.querySelector('.password-toggle-btn');
+    const shouldShow = passwordInput.type === 'password';
+    passwordInput.type = shouldShow ? 'text' : 'password';
+    button.textContent = shouldShow ? 'Hide' : 'Show';
+}
+</script>
+{% endblock %}

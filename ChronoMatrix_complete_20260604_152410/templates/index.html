@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="glass-card" style="max-width: 420px; margin: 4rem auto; text-align: center;">
+    <h2 style="margin-bottom: 2rem;">Welcome Back</h2>
+
+    <form id="loginForm">
+        <div class="form-group" style="text-align: left;">
+            <label>Role</label>
+            <select id="role" required onchange="handleRoleChange()">
+                <option value="SAdmin">S Admin</option>
+                <option value="Admin">Admin</option>
+                <option value="Faculty">Faculty</option>
+                <option value="Student">Student</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="login-department-wrap" style="text-align: left; display: none;">
+            <label>Department</label>
+            <select id="login-department" onchange="handleDepartmentChange()">
+                <option value="">Select Department</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="login-faculty-wrap" style="text-align: left; display: none;">
+            <label>Faculty Name</label>
+            <select id="login-faculty">
+                <option value="">Select Department First</option>
+            </select>
+        </div>
+
+        <div class="form-group" style="text-align: left;">
+            <label>Username</label>
+            <input type="text" id="username" placeholder="Enter username" required>
+        </div>
+
+        <div class="form-group" style="text-align: left;">
+            <label>Password</label>
+            <div style="position: relative;">
+                <input type="password" id="password" placeholder="Enter password" style="padding-right: 90px;" required>
+                <button type="button" id="togglePassword" class="password-toggle-btn">Show</button>
+            </div>
+        </div>
+
+        <button type="submit" class="btn">Login to Portal</button>
+    </form>
+
+    <div style="margin-top: 1.5rem;">
+        <button id="setupBtn" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.5rem;">Initialize System (First Time Setup)</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('token')) {
+        if (localStorage.getItem('role') === 'Student') {
+            window.location.href = '/timetable';
+        } else if (localStorage.getItem('role') === 'Faculty') {
+            window.location.href = '/faculty-availability';
+        } else if (localStorage.getItem('is_global_admin') === 'true') {
+            window.location.href = '/super-admin';
+        } else {
+            window.location.href = '/dashboard';
+        }
+    }
+
+    loadLoginDepartments();
+    handleRoleChange();
+
+    document.getElementById('togglePassword').addEventListener('click', () => {
+        const password = document.getElementById('password');
+        const button = document.getElementById('togglePassword');
+        const shouldShow = password.type === 'password';
+        password.type = shouldShow ? 'text' : 'password';
+        button.textContent = shouldShow ? 'Hide' : 'Show';
+    });
+
+    document.getElementById('loginForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const role = document.getElementById('role').value;
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        const departmentId = document.getElementById('login-department').value;
+        const facultyId = document.getElementById('login-faculty').value;
+
+        if (role === 'Admin' && !departmentId) {
+            showToast('Please select department for admin login', 'error');
+            return;
+        }
+
+        if (role === 'Faculty' && (departmentId || facultyId) && (!departmentId || !facultyId)) {
+            showToast('Select both department and faculty name, or leave both empty for your own faculty login', 'error');
+            return;
+        }
+
+        try {
+            const payload = { role, username, password };
+            if (role === 'Admin' || (role === 'Faculty' && departmentId)) payload.department_id = departmentId;
+            if (role === 'Faculty' && facultyId) payload.faculty_id = facultyId;
+
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                const user = data.user || {};
+                localStorage.setItem('token', data.access_token);
+                localStorage.setItem('role', user.role || role);
+                localStorage.setItem('username', user.username || username);
+                localStorage.setItem('is_global_admin', user.is_global_admin ? 'true' : 'false');
+
+                if (user.department_id) {
+                    localStorage.setItem('department_id', user.department_id);
+                    localStorage.setItem('department_name', user.department || '');
+                } else {
+                    localStorage.removeItem('department_id');
+                    localStorage.removeItem('department_name');
+                }
+
+                if (user.faculty_id) {
+                    localStorage.setItem('faculty_id', user.faculty_id);
+                    localStorage.setItem('faculty_name', user.faculty || '');
+                    localStorage.setItem('savedFaculty', user.faculty_id);
+                } else {
+                    localStorage.removeItem('faculty_id');
+                    localStorage.removeItem('faculty_name');
+                    if (role !== 'Faculty') localStorage.removeItem('savedFaculty');
+                }
+
+                showToast('Login successful!');
+                setTimeout(() => {
+                    if (user.role === 'Student') {
+                        window.location.href = '/timetable';
+                    } else if (user.role === 'Faculty') {
+                        window.location.href = '/faculty-availability';
+                    } else if (user.is_global_admin) {
+                        window.location.href = '/super-admin';
+                    } else {
+                        window.location.href = '/dashboard';
+                    }
+                }, 800);
+            } else {
+                showToast(data.msg || 'Login failed', 'error');
+            }
+        } catch (err) {
+            showToast('Server error', 'error');
+        }
+    });
+
+    document.getElementById('setupBtn').addEventListener('click', async () => {
+        try {
+            showToast('Initializing system... Please wait.');
+            const res = await fetch('/api/setup', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                showToast(data.msg);
+                await loadLoginDepartments();
+            } else {
+                showToast(data.error || 'Setup failed', 'error');
+            }
+        } catch (err) {
+            showToast('Setup failed', 'error');
+        }
+    });
+});
+
+let loginFaculties = [];
+
+async function loadLoginDepartments() {
+    const select = document.getElementById('login-department');
+    try {
+        const [deptRes, facultyRes] = await Promise.all([
+            fetch('/api/departments'),
+            fetch('/api/faculty')
+        ]);
+        const departments = await deptRes.json();
+        loginFaculties = facultyRes.ok ? await facultyRes.json() : [];
+        select.innerHTML = '<option value="">Select Department</option>';
+        departments.forEach(dept => {
+            select.innerHTML += `<option value="${dept.id}">${dept.name}</option>`;
+        });
+        if (departments.length === 0) {
+            select.innerHTML = '<option value="">S Admin must create department first</option>';
+        }
+        handleDepartmentChange();
+    } catch (err) {
+        select.innerHTML = '<option value="">Could not load departments</option>';
+        document.getElementById('login-faculty').innerHTML = '<option value="">Could not load faculty</option>';
+    }
+}
+
+function handleRoleChange() {
+    const role = document.getElementById('role').value;
+    const departmentWrap = document.getElementById('login-department-wrap');
+    const departmentSelect = document.getElementById('login-department');
+    const facultyWrap = document.getElementById('login-faculty-wrap');
+    const facultySelect = document.getElementById('login-faculty');
+    const showDepartment = role === 'Admin' || role === 'Faculty';
+    const showFaculty = role === 'Faculty';
+    departmentWrap.style.display = showDepartment ? 'block' : 'none';
+    departmentSelect.required = role === 'Admin';
+    facultyWrap.style.display = showFaculty ? 'block' : 'none';
+    facultySelect.required = false;
+    handleDepartmentChange();
+}
+
+function handleDepartmentChange() {
+    const role = document.getElementById('role').value;
+    const departmentId = document.getElementById('login-department').value;
+    const facultySelect = document.getElementById('login-faculty');
+    if (role !== 'Faculty') {
+        facultySelect.innerHTML = '<option value="">Select Department First</option>';
+        facultySelect.disabled = true;
+        return;
+    }
+
+    const faculties = loginFaculties.filter(f => facultyBelongsToDepartment(f, departmentId));
+    if (!departmentId) {
+        facultySelect.innerHTML = '<option value="">Select Department First</option>';
+        facultySelect.disabled = true;
+        return;
+    }
+    if (faculties.length === 0) {
+        facultySelect.innerHTML = '<option value="">No faculty in this department</option>';
+        facultySelect.disabled = true;
+        return;
+    }
+    facultySelect.disabled = false;
+    facultySelect.innerHTML = '<option value="">Select Faculty</option>' +
+        faculties.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+}
+</script>
+{% endblock %}

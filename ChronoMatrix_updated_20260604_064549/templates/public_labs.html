@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header-flex">
+    <h2>Live Lab Availability</h2>
+    <div>
+        <button class="btn" style="background: var(--success);" onclick="generateLabPrint()">Generate Print</button>
+    </div>
+</div>
+
+<div class="glass-card" style="margin-top: 1rem;">
+    <div class="print-report-header">
+        <h2>Live Lab Availability</h2>
+        <p id="lab-print-details">Academic Year: 2025-26 | Lab: -</p>
+    </div>
+    <p class="live-lab-help" style="color: var(--text-muted); margin-bottom: 1.5rem;">Select a department to view the real-time availability of their labs. Empty slots can be borrowed.</p>
+    <div class="two-col-grid live-lab-controls" style="max-width: 800px; margin-bottom: 2rem; grid-template-columns: 1fr 1fr 1fr;">
+        <div class="form-group">
+            <label>Academic Year</label>
+            <input type="text" id="lab-year" value="2025-26" onchange="loadLabTimetable()">
+        </div>
+        <div class="form-group" style="display: none;">
+            <label>Select Department</label>
+            <select id="lab-dept-select">
+                <option value="">Choose Department</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Select Lab</label>
+            <select id="lab-room-select" onchange="loadLabTimetable()" disabled>
+                <option value="">Select Lab</option>
+            </select>
+        </div>
+        <div class="form-group print-action-group">
+            <label>&nbsp;</label>
+            <button type="button" class="btn" style="background: var(--success);" onclick="generateLabPrint()">Generate Print</button>
+        </div>
+    </div>
+
+    <div class="timetable-wrapper" id="lab-grid-container" style="display: none;">
+        <table class="timetable">
+            <thead>
+                <tr>
+                    <th>Day / Time</th>
+                    <th>8:30 - 9:20</th>
+                    <th>9:20 - 10:10</th>
+                    <th>10:10 - 11:00</th>
+                    <th class="cell-break">Short Break</th>
+                    <th>11:15 - 12:05</th>
+                    <th>12:05 - 12:55</th>
+                    <th class="cell-break">Lunch</th>
+                    <th>1:30 - 2:20</th>
+                    <th>2:20 - 3:10</th>
+                    <th>3:10 - 4:00</th>
+                </tr>
+            </thead>
+            <tbody id="lab-tt-body"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allLabs = [];
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        allLabs = await apiCall('/api/rooms');
+        const roomSelect = document.getElementById('lab-room-select');
+        roomSelect.innerHTML = '<option value="">Select Lab</option>';
+
+        const labRooms = allLabs.filter(r => r.type === 'Lab' || r.type === 'Integrated Lab');
+
+        if (labRooms.length === 0) {
+            roomSelect.innerHTML = '<option value="">No labs found in system</option>';
+            roomSelect.disabled = true;
+        } else {
+            labRooms.forEach(l => {
+                roomSelect.innerHTML += `<option value="${l.id}">${l.name}</option>`;
+            });
+            roomSelect.disabled = false;
+        }
+    } catch(err) {
+        showToast('Error loading data', 'error');
+    }
+});
+
+async function loadLabTimetable() {
+    const roomId = document.getElementById('lab-room-select').value;
+    const year = document.getElementById('lab-year').value;
+    const container = document.getElementById('lab-grid-container');
+
+    if (!roomId) {
+        container.style.display = 'none';
+        updatePrintDetails();
+        return;
+    }
+
+    try {
+        const schedules = await apiCall(`/api/room-timetable?academic_year=${year}&room_id=${roomId}`);
+        renderLabGrid(schedules);
+        updatePrintDetails();
+        container.style.display = 'block';
+    } catch (err) {
+        showToast('Error loading lab timetable', 'error');
+    }
+}
+
+async function generateLabPrint() {
+    const roomSelect = document.getElementById('lab-room-select');
+    if (!roomSelect.value) {
+        showToast('Please select a lab before generating print.', 'error');
+        return;
+    }
+    await loadLabTimetable();
+    setTimeout(() => window.print(), 250);
+}
+
+function updatePrintDetails() {
+    const roomSelect = document.getElementById('lab-room-select');
+    const year = document.getElementById('lab-year').value || '-';
+    const labName = roomSelect.value ? roomSelect.options[roomSelect.selectedIndex].text : '-';
+    document.getElementById('lab-print-details').innerText = `Academic Year: ${year} | Lab: ${labName}`;
+}
+
+function renderLabGrid(schedules) {
+    const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const tbody = document.getElementById('lab-tt-body');
+    let html = '';
+
+    DAYS.forEach(day => {
+        let row = `<tr><th>${day}</th>`;
+        let slots = new Array(8).fill(null);
+
+        schedules.filter(s => s.day === day).forEach(s => {
+            for(let i = 0; i < s.duration; i++) {
+                slots[s.slot_index + i] = s;
+            }
+        });
+
+        let skip = 0;
+        for(let i = 0; i < 8; i++) {
+            if(skip > 0) { skip--; continue; }
+
+            if(i === 3) row += `<td class="cell-break">Short Break</td>`;
+            if(i === 5) row += `<td class="cell-break">Lunch</td>`;
+
+            if(day === 'Saturday' && i === 5) {
+                row += `<td colspan="3" style="background: rgba(255, 255, 255, 0.02); text-align: center; vertical-align: middle; letter-spacing: 4px; font-weight: bold; color: var(--text-muted);">HALF DAY</td>`;
+                skip = 2;
+                continue;
+            }
+
+            const cell = slots[i];
+            if(!cell) {
+                row += `<td style="color: var(--success); font-weight: 500; background: rgba(16, 185, 129, 0.1);">Available to Borrow</td>`;
+            } else {
+                row += `<td class="cell-conflict" colspan="${cell.duration}" style="animation: none; background: rgba(239, 68, 68, 0.2); border-left: 3px solid #ef4444;">
+                    <strong>Occupied</strong><br>
+                    <small>${cell.subject}</small><br>
+                    <small>${cell.faculty}</small>
+                </td>`;
+                skip = cell.duration - 1;
+            }
+        }
+        row += `</tr>`;
+        html += row;
+    });
+
+    tbody.innerHTML = html;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timetable Print</title>
+    <style>
+        @page {
+            size: landscape;
+            margin: 0.5cm;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #ffffff;
+            color: #000000;
+            font-family: "Times New Roman", Times, serif;
+            font-size: 12px;
+        }
+
+        .print-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 14px;
+            background: #111827;
+        }
+
+        .print-actions button {
+            border: 0;
+            border-radius: 4px;
+            padding: 10px 16px;
+            background: #10b981;
+            color: #ffffff;
+            font: 700 14px Arial, sans-serif;
+            cursor: pointer;
+        }
+
+        .page {
+            padding: 16px;
+        }
+
+        .print-header {
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        .print-header h1 {
+            margin: 0 0 5px;
+            font-size: 22px;
+            text-transform: uppercase;
+        }
+
+        .meta {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px;
+            margin-bottom: 10px;
+            border: 1px solid #333333;
+            padding: 8px;
+        }
+
+        .meta div {
+            min-width: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            page-break-inside: avoid;
+        }
+
+        th,
+        td {
+            border: 1px solid #333333;
+            padding: 5px;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        th {
+            background: #f1f5f9;
+            font-weight: 700;
+        }
+
+        .day-cell {
+            width: 90px;
+            font-weight: 700;
+        }
+
+        .schedule-cell {
+            min-width: 95px;
+            line-height: 1.25;
+        }
+
+        .cell-lab {
+            background: #d1fae5;
+        }
+
+        .cell-theory {
+            background: #dbeafe;
+        }
+
+        .break-cell {
+            background: #fef3c7;
+            font-weight: 700;
+        }
+
+        .half-cell {
+            background: #f8fafc;
+            font-weight: 700;
+            letter-spacing: 3px;
+        }
+
+        .subject {
+            font-weight: 700;
+        }
+
+        .details {
+            margin-top: 3px;
+            font-size: 11px;
+        }
+
+        .batch-line {
+            display: inline-block;
+            margin-top: 4px;
+            padding: 1px 6px;
+            border: 1px solid #333333;
+            border-radius: 999px;
+            font-weight: 700;
+            background: #ffffff;
+        }
+
+        .stacked-schedule + .stacked-schedule {
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px dashed #333333;
+        }
+
+        .summary {
+            margin-top: 14px;
+        }
+
+        .signature-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 70px;
+            margin-top: 36px;
+            padding: 0 48px;
+        }
+
+        .signature-line {
+            border-bottom: 1.5px solid #000000;
+            height: 40px;
+            margin-bottom: 8px;
+        }
+
+        .signature-box {
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .signature-box span {
+            display: block;
+            margin-top: 4px;
+            font-weight: 400;
+        }
+
+        .empty-note {
+            padding: 32px;
+            border: 1px solid #333333;
+            text-align: center;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        @media print {
+            .print-actions {
+                display: none;
+            }
+
+            .page {
+                padding: 0;
+            }
+
+            body {
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-actions">
+        <button type="button" onclick="window.print()">Print / Save PDF</button>
+        <button type="button" onclick="window.close()">Close</button>
+    </div>
+
+    <main class="page">
+        <div class="print-header">
+            <h1>Department Timetable</h1>
+            <div>Academic Year {{ academic_year }}</div>
+        </div>
+
+        <section class="meta">
+            <div><strong>Department:</strong> {{ department }}</div>
+            <div><strong>Semester:</strong> {{ semester }}</div>
+            <div><strong>Section:</strong> {{ section }}</div>
+            <div><strong>Class Teacher:</strong> {{ class_teacher }}</div>
+            <div><strong>HOD:</strong> {{ hod }}</div>
+        </section>
+
+        {% if has_schedules %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Day / Time</th>
+                        <th>8:30 - 9:20</th>
+                        <th>9:20 - 10:10</th>
+                        <th>10:10 - 11:00</th>
+                        <th>Short Break</th>
+                        <th>11:15 - 12:05</th>
+                        <th>12:05 - 12:55</th>
+                        <th>Lunch</th>
+                        <th>1:30 - 2:20</th>
+                        <th>2:20 - 3:10</th>
+                        <th>3:10 - 4:00</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in grid_rows %}
+                        <tr>
+                            <th class="day-cell">{{ row.day }}</th>
+                            {% for cell in row.cells %}
+                                {% if cell.kind == 'schedule' %}
+                                    {% set schedules = cell.schedules if cell.schedules is defined else [cell.schedule] %}
+                                    {% set is_lab_cell = cell.is_lab if cell.is_lab is defined else ('Lab' in cell.schedule.type) %}
+                                    <td colspan="{{ cell.colspan }}" class="schedule-cell {{ 'cell-lab' if is_lab_cell else 'cell-theory' }}">
+                                        {% for schedule in schedules %}
+                                            <div class="stacked-schedule">
+                                                <div class="subject">{{ schedule.subject_code }} - {{ schedule.subject }}</div>
+                                                <div class="details">{{ schedule.faculty }}</div>
+                                                <div class="details">{{ schedule.room }}</div>
+                                                {% if schedule.batch %}
+                                                    <div class="details"><span class="batch-line">Batch: {{ schedule.batch }}</span></div>
+                                                {% endif %}
+                                            </div>
+                                        {% endfor %}
+                                    </td>
+                                {% elif cell.kind == 'break' %}
+                                    <td class="break-cell">{{ cell.label }}</td>
+                                {% elif cell.kind == 'half' %}
+                                    <td colspan="{{ cell.colspan }}" class="half-cell">{{ cell.label }}</td>
+                                {% else %}
+                                    <td>{{ cell.label }}</td>
+                                {% endif %}
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <table class="summary">
+                <thead>
+                    <tr>
+                        <th>Course Code</th>
+                        <th>Course Name</th>
+                        <th>Course Shorthand</th>
+                        <th>Faculty Name</th>
+                        <th>Batch</th>
+                        <th>Hrs / Week</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in summary_rows %}
+                        <tr>
+                            <td>{{ item.code }}</td>
+                            <td>{{ item.name }}</td>
+                            <td>{{ item.short }}</td>
+                            <td>{{ item.faculty }}</td>
+                            <td>{{ item.batch }}</td>
+                            <td>{{ item.hours }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <section class="signature-panel">
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    Class Teacher Signature
+                    <span>{{ class_teacher }}</span>
+                </div>
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    Head of Department Signature
+                    <span>{{ hod }}</span>
+                </div>
+            </section>
+        {% else %}
+            <div class="empty-note">No timetable found for this selection.</div>
+        {% endif %}
+    </main>
+
+    <script>
+        window.addEventListener('load', () => {
+            setTimeout(() => window.print(), 500);
+        });
+    </script>
+</body>
+</html>
