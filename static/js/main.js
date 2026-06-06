@@ -150,8 +150,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const userLabel = departmentName
             ? `${localStorage.getItem('username')} (${displayRole} - ${departmentName})`
             : `${localStorage.getItem('username')} (${displayRole})`;
+        const returnToSAdminButton = localStorage.getItem('s_admin_token')
+            ? `<button class="btn btn-secondary" onclick="restoreSAdminSession()" style="padding: 0.4rem 1rem; margin-right: 0.5rem;">S Admin</button>`
+            : '';
         navUser.innerHTML = `
             <span style="margin-right: 1rem; color: var(--text-muted);">${userLabel}</span>
+            ${returnToSAdminButton}
             <button class="btn btn-secondary" onclick="logout()" style="padding: 0.4rem 1rem;">Logout</button>
         `;
     }
@@ -180,6 +184,25 @@ function installGlobalAdminUi(isGlobalAdmin) {
     document.querySelectorAll('.global-admin-only').forEach(element => {
         element.style.display = '';
     });
+}
+
+function restoreSAdminSession() {
+    const token = localStorage.getItem('s_admin_token');
+    if (!token) {
+        window.location.href = '/';
+        return;
+    }
+    const username = localStorage.getItem('s_admin_username') || 'S Admin';
+    localStorage.setItem('token', token);
+    localStorage.setItem('role', 'Admin');
+    localStorage.setItem('username', username);
+    localStorage.setItem('is_global_admin', 'true');
+    localStorage.removeItem('department_id');
+    localStorage.removeItem('department_name');
+    localStorage.removeItem('savedDept');
+    localStorage.removeItem('s_admin_token');
+    localStorage.removeItem('s_admin_username');
+    window.location.href = '/super-admin';
 }
 
 function goBack() {

@@ -203,6 +203,11 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Chrono Matrix local data backups
+local_backups/
+chrono_matrix.db
+*.sqlite
+
 # Ruff stuff:
 .ruff_cache/
 

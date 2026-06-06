@@ -112,6 +112,10 @@
                 <select id="tt-entry-faculty"></select>
             </div>
             <div class="form-group">
+                <label>Assistant Faculty (Lab)</label>
+                <select id="tt-entry-assistant-faculty"></select>
+            </div>
+            <div class="form-group">
                 <label>Room</label>
                 <select id="tt-entry-room"></select>
             </div>
@@ -166,6 +170,7 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 const TT_SLOTS = ['8:30 - 9:20', '9:20 - 10:10', '10:10 - 11:00', '11:15 - 12:05', '12:05 - 12:55', '1:30 - 2:20', '2:20 - 3:10', '3:10 - 4:00'];
 let isFacultyMode = localStorage.getItem('role') === 'Faculty';
 let isAdminMode = localStorage.getItem('role') === 'Admin';
+let isStudentMode = localStorage.getItem('role') === 'Student';
 let currentSchedules = [];
 let ttSubjects = [];
 let ttFaculties = [];
@@ -190,6 +195,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('tt-availability-btn').style.display = 'inline-block';
         document.getElementById('output-feed-status').innerText = 'Your timetable will appear here after admin generates it.';
     }
+    if (isStudentMode) {
+        document.getElementById('tt-teacher').style.display = 'none';
+        document.getElementById('tt-hod').style.display = 'none';
+        document.getElementById('output-feed-status').innerText = 'Select View to see your department timetable.';
+        const studentYear = localStorage.getItem('student_academic_year');
+        const studentSemester = localStorage.getItem('student_semester');
+        if (studentYear) document.getElementById('tt-year').value = studentYear;
+        if (studentSemester) document.getElementById('tt-sem').value = studentSemester;
+    }
 
     try {
         const depts = await apiCall('/api/departments');
@@ -206,6 +220,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         deptSelect.disabled = !!loginDeptId;
         await loadTimetableEditorData();
         await handleTimetableDeptChange();
+        if (isStudentMode) {
+            applyStudentTimetableSelection();
+            await loadTimetable();
+        }
         document.getElementById('tt-sec').addEventListener('change', () => {
             saveTimetableSection();
             restoreClassTeacherSelection();
@@ -255,6 +273,17 @@ function facultyMatchesDept(faculty, deptId) {
 
 function getSectionValue() {
     return document.getElementById('tt-sec').value.trim();
+}
+
+function applyStudentTimetableSelection() {
+    if (!isStudentMode) return;
+    const section = localStorage.getItem('student_section') || '';
+    const sectionSelect = document.getElementById('tt-sec');
+    if (!section) return;
+    if (!Array.from(sectionSelect.options).some(option => option.value === section)) {
+        sectionSelect.innerHTML += `<option value="${escapeOptionText(section)}">${escapeOptionText(section)}</option>`;
+    }
+    sectionSelect.value = section;
 }
 
 function classTeacherKey() {
@@ -487,6 +516,20 @@ function sectionMatchesFeed(item, section) {
     return sameValue(item.section, section) || sameValue(item.batch, section);
 }
 
+function scheduleFacultyDisplay(schedule) {
+    if (schedule.faculty_display) return schedule.faculty_display;
+    const names = [];
+    if (schedule.faculty) names.push(schedule.faculty);
+    if (
+        (schedule.type || '').includes('Lab') &&
+        schedule.assistant_faculty &&
+        !names.some(name => sameValue(name, schedule.assistant_faculty))
+    ) {
+        names.push(schedule.assistant_faculty);
+    }
+    return names.join(' / ') || '-';
+}
+
 async function loadSavedOutputFeed(deptId, year, semester, section) {
     const params = new URLSearchParams();
     if (year) params.set('academic_year', year);
@@ -508,6 +551,10 @@ function scheduleMatchesSavedFeed(schedule, feed) {
         return feed.labs.some(item =>
             sameValue(item.subject_id, schedule.subject_id) &&
             sameValue(item.main_faculty_id, schedule.faculty_id) &&
+            (
+                (!item.assistant_faculty_id && !schedule.assistant_faculty_id) ||
+                sameValue(item.assistant_faculty_id, schedule.assistant_faculty_id)
+            ) &&
             sameValue(item.room_id, schedule.room_id) &&
             sameValue(item.semester, schedule.semester) &&
             sameValue(item.academic_year, schedule.academic_year) &&
@@ -579,6 +626,9 @@ function fillTimetableEntryLists(selected = {}) {
 
     document.getElementById('tt-entry-subject').innerHTML = ttOptions(subjects, s => `${s.code} - ${s.name}`, selected.subject_id);
     document.getElementById('tt-entry-faculty').innerHTML = ttOptions(faculties, f => f.name, selected.faculty_id);
+    document.getElementById('tt-entry-assistant-faculty').innerHTML =
+        '<option value="">No Assistant</option>' +
+        ttOptions(faculties, f => f.name, selected.assistant_faculty_id);
     document.getElementById('tt-entry-room').innerHTML = ttOptions(rooms, r => `${r.name} (${r.type})`, selected.room_id);
     document.getElementById('tt-entry-day').innerHTML = DAYS.map(day => `<option value="${day}" ${day === selected.day ? 'selected' : ''}>${day}</option>`).join('');
     document.getElementById('tt-entry-slot').innerHTML = TT_SLOTS.map((slot, index) => `<option value="${index}" ${Number(selected.slot_index) === index ? 'selected' : ''}>${slot}</option>`).join('');
@@ -629,6 +679,7 @@ async function saveTimetableEntry() {
     const payload = {
         subject_id: document.getElementById('tt-entry-subject').value,
         faculty_id: document.getElementById('tt-entry-faculty').value,
+        asst_faculty_id: document.getElementById('tt-entry-assistant-faculty').value,
         room_id: document.getElementById('tt-entry-room').value,
         schedule_type: document.getElementById('tt-entry-type').value,
         day: document.getElementById('tt-entry-day').value,
@@ -791,6 +842,7 @@ function renderGrid(schedules) {
                 const bg = s.type.includes('Lab') ? 'cell-lab' : 'cell-theory';
                 row += `<td class="${bg}" colspan="${s.duration}">
                     <div style="font-weight:600; font-size:1.1rem;">${s.subject}</div>
+                    ${s.assistant_faculty ? `<div style="font-size:0.85rem; margin-top:0.3rem;">Assistant: ${escapeOptionText(s.assistant_faculty)}</div>` : ''}
                     <div style="font-size:0.85rem; margin-top:0.3rem;">👤 ${s.faculty}</div>
                     <div style="font-size:0.85rem; color:var(--text-muted);">🚪 ${s.room}</div>
                 </td>`;
@@ -817,6 +869,10 @@ function matchingRequirementForSchedule(schedule, savedFeed = { labs: [], theori
         if (!sameCommon) return false;
         if (isLab) {
             return sameValue(item.main_faculty_id, schedule.faculty_id) &&
+                (
+                    (!item.assistant_faculty_id && !schedule.assistant_faculty_id) ||
+                    sameValue(item.assistant_faculty_id, schedule.assistant_faculty_id)
+                ) &&
                 (sectionMatchesFeed(item, schedule.section) || sectionMatchesFeed(item, schedule.batch));
         }
         return sameValue(item.faculty_id, schedule.faculty_id) &&
@@ -865,7 +921,7 @@ function renderSummary(schedules, teacherName, hodName, savedFeed = { labs: [], 
                 requiredHours: requirement ? Number(requirement.weekly_hours) : null
             };
         }
-        summary[summaryKey].faculty.add(s.faculty);
+        summary[summaryKey].faculty.add(scheduleFacultyDisplay(s));
         if (requirement && summary[summaryKey].requiredHours === null) {
             summary[summaryKey].requiredHours = Number(requirement.weekly_hours);
         }

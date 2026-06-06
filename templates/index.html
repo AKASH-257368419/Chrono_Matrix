@@ -98,12 +98,12 @@
                 </select>
             </div>
 
-            <div class="auth-field">
+            <div class="auth-field" id="login-username-wrap">
                 <label>Username</label>
                 <input type="text" id="username" placeholder="Enter username" required>
             </div>
 
-            <div class="auth-field">
+            <div class="auth-field" id="login-password-wrap">
                 <label>Password</label>
                 <div class="auth-input-wrap">
                     <input type="password" id="password" placeholder="Enter password" required>
@@ -111,7 +111,36 @@
                 </div>
             </div>
 
-            <button type="submit" class="auth-primary-btn">LOGIN</button>
+            <div id="student-timetable-wrap" style="display: none;">
+                <div class="auth-field">
+                    <label>Academic Year</label>
+                    <input type="text" id="student-year" value="2025-26" placeholder="2025-26">
+                </div>
+
+                <div class="auth-field">
+                    <label>Semester</label>
+                    <select id="student-semester">
+                        <option value="">Select Semester</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                    </select>
+                </div>
+
+                <div class="auth-field">
+                    <label>Section</label>
+                    <select id="student-section">
+                        <option value="">Select Department and Semester First</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" class="auth-primary-btn" id="portal-login-btn">LOGIN</button>
             <button type="button" class="auth-secondary-link" id="backToSuperLoginFromPortal">Back to Super Admin Login</button>
         </form>
     </section>
@@ -147,6 +176,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('showPortalLogin').addEventListener('click', showPortalLogin);
     document.getElementById('backToSuperLogin').addEventListener('click', showSuperLogin);
     document.getElementById('backToSuperLoginFromPortal').addEventListener('click', showSuperLogin);
+    document.getElementById('student-year').addEventListener('change', populateStudentSections);
+    document.getElementById('student-semester').addEventListener('change', populateStudentSections);
 
     document.getElementById('superLoginForm').addEventListener('submit', loginSuperAdmin);
     document.getElementById('sAdminCreateForm').addEventListener('submit', createSAdmin);
@@ -201,6 +232,16 @@ function togglePasswordField(inputId, buttonId) {
     button.textContent = shouldShow ? 'Hide' : 'Show';
 }
 
+function escapeOptionText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
 async function loginSuperAdmin(event) {
     event.preventDefault();
     const username = document.getElementById('super-username').value.trim();
@@ -251,6 +292,25 @@ async function loginToPortal(event) {
     const departmentId = document.getElementById('login-department').value;
     const facultyId = document.getElementById('login-faculty').value;
 
+    if (role === 'Student') {
+        const academicYear = document.getElementById('student-year').value.trim() || '2025-26';
+        const semester = document.getElementById('student-semester').value;
+        const section = document.getElementById('student-section').value;
+        const departmentSelect = document.getElementById('login-department');
+        const departmentName = departmentSelect.value ? departmentSelect.options[departmentSelect.selectedIndex].text : '';
+        if (!departmentId || !semester || !section) {
+            showToast('Select department, semester, and section for student timetable', 'error');
+            return;
+        }
+        await loginWithPayload(
+            { role, department_id: departmentId },
+            role,
+            'Student',
+            { academicYear, semester, section, departmentId, departmentName }
+        );
+        return;
+    }
+
     if (role === 'Admin' && !departmentId) {
         showToast('Please select department for admin login', 'error');
         return;
@@ -267,7 +327,7 @@ async function loginToPortal(event) {
     await loginWithPayload(payload, role, username);
 }
 
-async function loginWithPayload(payload, fallbackRole, fallbackUsername) {
+async function loginWithPayload(payload, fallbackRole, fallbackUsername, studentSelection = null) {
     try {
         const res = await fetch('/api/login', {
             method: 'POST',
@@ -278,6 +338,7 @@ async function loginWithPayload(payload, fallbackRole, fallbackUsername) {
 
         if (res.ok) {
             saveSession(data, fallbackRole, fallbackUsername);
+            if (studentSelection) saveStudentTimetableSelection(studentSelection);
             showToast('Login successful!');
             redirectAfterLogin(data.user || {}, 800);
         } else {
@@ -286,6 +347,19 @@ async function loginWithPayload(payload, fallbackRole, fallbackUsername) {
     } catch (err) {
         showToast('Server error', 'error');
     }
+}
+
+function saveStudentTimetableSelection(selection) {
+    localStorage.setItem('student_academic_year', selection.academicYear || '2025-26');
+    localStorage.setItem('student_semester', selection.semester || '');
+    localStorage.setItem('student_section', selection.section || '');
+    localStorage.setItem('savedDept', selection.departmentId || '');
+    if (selection.departmentId) {
+        localStorage.setItem('department_id', selection.departmentId);
+        localStorage.setItem(`chronoLastSection:${selection.departmentId}:${selection.semester || 'all'}`, selection.section || '');
+        localStorage.setItem(`chronoLastSection:${selection.departmentId}`, selection.section || '');
+    }
+    if (selection.departmentName) localStorage.setItem('department_name', selection.departmentName);
 }
 
 function saveSession(data, fallbackRole, fallbackUsername) {
@@ -357,12 +431,25 @@ function handleRoleChange() {
     const departmentSelect = document.getElementById('login-department');
     const facultyWrap = document.getElementById('login-faculty-wrap');
     const facultySelect = document.getElementById('login-faculty');
-    const showDepartment = role === 'Admin' || role === 'Faculty';
+    const usernameWrap = document.getElementById('login-username-wrap');
+    const passwordWrap = document.getElementById('login-password-wrap');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const studentFields = document.getElementById('student-timetable-wrap');
+    const portalButton = document.getElementById('portal-login-btn');
+    const showDepartment = role === 'Admin' || role === 'Faculty' || role === 'Student';
     const showFaculty = role === 'Faculty';
+    const showCredentials = role !== 'Student';
     departmentWrap.style.display = showDepartment ? 'block' : 'none';
-    departmentSelect.required = role === 'Admin';
+    departmentSelect.required = role === 'Admin' || role === 'Student';
     facultyWrap.style.display = showFaculty ? 'block' : 'none';
     facultySelect.required = false;
+    usernameWrap.style.display = showCredentials ? 'block' : 'none';
+    passwordWrap.style.display = showCredentials ? 'block' : 'none';
+    usernameInput.required = showCredentials;
+    passwordInput.required = showCredentials;
+    studentFields.style.display = role === 'Student' ? 'block' : 'none';
+    portalButton.textContent = role === 'Student' ? 'VIEW TIMETABLE' : 'LOGIN';
     handleDepartmentChange();
 }
 
@@ -370,6 +457,12 @@ function handleDepartmentChange() {
     const role = document.getElementById('role').value;
     const departmentId = document.getElementById('login-department').value;
     const facultySelect = document.getElementById('login-faculty');
+    if (role === 'Student') {
+        facultySelect.innerHTML = '<option value="">Select Department First</option>';
+        facultySelect.disabled = true;
+        populateStudentSections();
+        return;
+    }
     if (role !== 'Faculty') {
         facultySelect.innerHTML = '<option value="">Select Department First</option>';
         facultySelect.disabled = true;
@@ -390,6 +483,39 @@ function handleDepartmentChange() {
     facultySelect.disabled = false;
     facultySelect.innerHTML = '<option value="">Select Faculty</option>' +
         faculties.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+}
+
+async function populateStudentSections() {
+    const role = document.getElementById('role').value;
+    if (role !== 'Student') return;
+    const departmentId = document.getElementById('login-department').value;
+    const semester = document.getElementById('student-semester').value;
+    const academicYear = document.getElementById('student-year').value.trim() || '2025-26';
+    const sectionSelect = document.getElementById('student-section');
+
+    if (!departmentId || !semester) {
+        sectionSelect.innerHTML = '<option value="">Select Department and Semester First</option>';
+        return;
+    }
+
+    sectionSelect.innerHTML = '<option value="">Loading sections...</option>';
+    try {
+        const params = new URLSearchParams({
+            department_id: departmentId,
+            semester,
+            academic_year: academicYear
+        });
+        const res = await fetch(`/api/sections?${params.toString()}`);
+        const sections = res.ok ? await res.json() : [];
+        if (!sections.length) {
+            sectionSelect.innerHTML = '<option value="">No saved sections for this selection</option>';
+            return;
+        }
+        sectionSelect.innerHTML = '<option value="">Select Section</option>' +
+            sections.map(item => `<option value="${escapeOptionText(item.section)}">${escapeOptionText(item.section)}</option>`).join('');
+    } catch (err) {
+        sectionSelect.innerHTML = '<option value="">Could not load sections</option>';
+    }
 }
 </script>
 {% endblock %}

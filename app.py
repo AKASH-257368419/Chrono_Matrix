@@ -269,6 +269,27 @@ def faculty_json(faculty):
     }
 
 
+def assistant_faculty_name(schedule):
+    if not getattr(schedule, 'asst_faculty_id', None):
+        return ""
+    assistant = Faculty.query.get(schedule.asst_faculty_id)
+    return assistant.name if assistant else ""
+
+
+def schedule_faculty_names(schedule):
+    names = []
+    if getattr(schedule, 'faculty', None):
+        names.append(schedule.faculty.name)
+    assistant_name = assistant_faculty_name(schedule)
+    if assistant_name and assistant_name not in names:
+        names.append(assistant_name)
+    return names
+
+
+def schedule_faculty_display(schedule):
+    return " / ".join(schedule_faculty_names(schedule))
+
+
 def interdepartment_mapping_json(mapping):
     faculty = Faculty.query.get(mapping.faculty_id)
     department = Department.query.get(mapping.department_id)
@@ -431,6 +452,29 @@ def login():
     faculty_id = data.get('faculty_id')
     selected_department = None
     selected_faculty = None
+
+    if role == 'Student':
+        if not department_id:
+            return jsonify({"msg": "Please select department for student timetable"}), 400
+        try:
+            department_id = int(department_id)
+        except (TypeError, ValueError):
+            return jsonify({"msg": "Invalid department"}), 400
+        department = Department.query.get(department_id)
+        if not department:
+            return jsonify({"msg": "Department not found"}), 404
+        payload = {
+            "id": None,
+            "username": "Student",
+            "role": "Student",
+            "department_id": department.id,
+            "department": department.name,
+            "faculty_id": None,
+            "faculty": None,
+            "is_global_admin": False
+        }
+        access_token = create_access_token(identity=f"student:{department.id}", additional_claims={'user': payload})
+        return jsonify(access_token=access_token, user=payload), 200
 
     if role == 'SAdmin':
         user = User.query.filter_by(username=username, role='Admin', department_id=None).first()
@@ -599,6 +643,44 @@ def change_s_admin_password():
     user.set_password(new_password)
     db.session.commit()
     return jsonify({"msg": "S Admin password updated. Please login again."})
+
+
+@app.route('/api/s-admin/department-session', methods=['POST'])
+def s_admin_department_session():
+    blocked = require_global_admin()
+    if blocked:
+        return blocked
+
+    data = request.json or {}
+    department_id = data.get('department_id')
+    if not department_id:
+        return jsonify({"error": "Select department to view dashboard."}), 400
+
+    department = Department.query.get(department_id)
+    if not department:
+        return jsonify({"error": "Department not found."}), 404
+
+    identity = current_identity()
+    payload = {
+        "id": identity.get("id"),
+        "username": identity.get("username") or "S Admin",
+        "role": "Admin",
+        "department_id": department.id,
+        "department": department.name,
+        "faculty_id": None,
+        "faculty": None,
+        "is_global_admin": False,
+        "acting_from_s_admin": True
+    }
+    access_token = create_access_token(
+        identity=f"sadmin-dept:{department.id}",
+        additional_claims={'user': payload}
+    )
+    return jsonify({
+        "msg": f"Opening {department.name} dashboard.",
+        "access_token": access_token,
+        "user": payload
+    }), 200
 
 # ---------------- Routes: CRUD ----------------
 @app.route('/api/departments', methods=['GET', 'POST'])
@@ -1421,7 +1503,11 @@ def get_room_timetable():
             "type": s.schedule_type,
             "subject_code": s.subject.code,
             "subject": s.subject.name,
+            "faculty_id": s.faculty_id,
             "faculty": s.faculty.name,
+            "assistant_faculty_id": s.asst_faculty_id,
+            "assistant_faculty": assistant_faculty_name(s),
+            "faculty_display": schedule_faculty_display(s),
             "day": s.day,
             "slot_index": s.slot_index,
             "duration": s.duration_slots,
@@ -1499,6 +1585,9 @@ def get_timetable():
             "subject": s.subject.name,
             "faculty_id": s.faculty_id,
             "faculty": s.faculty.name,
+            "assistant_faculty_id": s.asst_faculty_id,
+            "assistant_faculty": assistant_faculty_name(s),
+            "faculty_display": schedule_faculty_display(s),
             "room_id": s.room_id,
             "room": s.room.name,
             "day": s.day,
@@ -1549,6 +1638,10 @@ def print_timetable():
             "subject_id": schedule.subject_id,
             "subject": schedule.subject.name,
             "faculty": schedule.faculty.name,
+            "faculty_id": schedule.faculty_id,
+            "assistant_faculty_id": schedule.asst_faculty_id,
+            "assistant_faculty": assistant_faculty_name(schedule),
+            "faculty_display": schedule_faculty_display(schedule),
             "room": schedule.room.name,
             "day": schedule.day,
             "slot_index": schedule.slot_index,
@@ -1606,11 +1699,11 @@ def print_timetable():
                 "code": schedule["subject_code"],
                 "name": schedule["subject"],
                 "short": schedule["subject"][:4],
-                "faculty": set(),
+            "faculty": set(),
                 "batch": schedule.get("batch") or "-",
                 "hours": 0
             }
-        summary[key]["faculty"].add(schedule["faculty"])
+        summary[key]["faculty"].add(schedule.get("faculty_display") or schedule["faculty"])
         summary[key]["hours"] += int(schedule["duration"])
     summary_rows = []
     for item in summary.values():
@@ -1652,6 +1745,8 @@ def update_schedule(id):
         obj.subject_id = data['subject_id']
     if data.get('faculty_id'):
         obj.faculty_id = data['faculty_id']
+    if data.get('asst_faculty_id') is not None:
+        obj.asst_faculty_id = int(data['asst_faculty_id']) if data.get('asst_faculty_id') else None
     if data.get('room_id'):
         obj.room_id = data['room_id']
     if data.get('day'):
@@ -1672,6 +1767,8 @@ def update_schedule(id):
         obj.batch = data.get('batch') or None
     if data.get('academic_year'):
         obj.academic_year = data['academic_year']
+    if obj.schedule_type == 'Theory':
+        obj.asst_faculty_id = None
     room_ok = classroom_allowed_for_subject(obj.room_id, obj.subject_id) if obj.schedule_type == 'Theory' else room_allowed(obj.room_id)
     if not subject_allowed(obj.subject_id) or not faculty_allowed(obj.faculty_id) or (obj.asst_faculty_id and not faculty_allowed(obj.asst_faculty_id)) or not room_ok:
         db.session.rollback()
@@ -1701,8 +1798,10 @@ def update_schedule(id):
 @app.route('/api/schedules', methods=['POST'])
 def add_schedule():
     data = request.json
-    asst_faculty_id = data.get('asst_faculty_id')
     schedule_type = data.get('schedule_type', 'Theory')
+    asst_faculty_id = None if schedule_type == 'Theory' else data.get('asst_faculty_id')
+    if asst_faculty_id:
+        asst_faculty_id = int(asst_faculty_id)
     room_ok = classroom_allowed_for_subject(data['room_id'], data['subject_id']) if schedule_type == 'Theory' else room_allowed(data['room_id'])
     if not subject_allowed(data['subject_id']) or not faculty_allowed(data['faculty_id']) or (asst_faculty_id and not faculty_allowed(asst_faculty_id)) or not room_ok:
         return scoped_access_error()

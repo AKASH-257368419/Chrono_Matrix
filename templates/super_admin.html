@@ -29,9 +29,15 @@
         <button type="submit" class="btn btn-secondary">Delete Department</button>
     </form>
 
-    <div style="display: grid; gap: 1rem;">
-        <button type="button" class="btn btn-secondary" onclick="window.location.href='/dashboard'">View Dashboard</button>
-    </div>
+    <form id="superDashboardForm" style="display: grid; gap: 1rem;">
+        <div class="form-group" style="margin-bottom: 0;">
+            <label>View Department Dashboard</label>
+            <select id="super-dashboard-department" required>
+                <option value="">Select Department</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-secondary">View Dashboard</button>
+    </form>
 </div>
 
 <div class="glass-card" id="admin-password-card" style="max-width: 520px; margin: 2rem auto; display: none;">
@@ -93,6 +99,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('superDeptCreateForm').addEventListener('submit', addSuperDepartment);
     document.getElementById('superDeptDeleteForm').addEventListener('submit', deleteSuperDepartment);
+    document.getElementById('superDashboardForm').addEventListener('submit', openDepartmentDashboard);
     document.getElementById('adminPasswordForm').addEventListener('submit', changeAdminPassword);
     await loadSuperAdminDepartments();
     await loadAdminPasswordOptions();
@@ -102,15 +109,19 @@ async function loadSuperAdminDepartments() {
     try {
         const departments = await apiCall('/api/departments');
         const deleteSelect = document.getElementById('super-delete-department');
+        const dashboardSelect = document.getElementById('super-dashboard-department');
         const tbody = document.getElementById('super-departments-body');
 
         deleteSelect.innerHTML = '<option value="">Select Department</option>';
+        dashboardSelect.innerHTML = '<option value="">Select Department</option>';
         departments.forEach(dept => {
             deleteSelect.innerHTML += `<option value="${dept.id}">${escapeHtml(dept.name)}</option>`;
+            dashboardSelect.innerHTML += `<option value="${dept.id}">${escapeHtml(dept.name)}</option>`;
         });
 
         if (departments.length === 0) {
             deleteSelect.innerHTML = '<option value="">No departments created</option>';
+            dashboardSelect.innerHTML = '<option value="">No departments created</option>';
             tbody.innerHTML = '<tr><td colspan="2">No departments created yet.</td></tr>';
             return;
         }
@@ -123,6 +134,40 @@ async function loadSuperAdminDepartments() {
         `).join('');
     } catch (err) {
         showToast(err.message || 'Could not load departments', 'error');
+    }
+}
+
+async function openDepartmentDashboard(event) {
+    event.preventDefault();
+    const select = document.getElementById('super-dashboard-department');
+    const departmentId = select.value;
+    const departmentName = departmentId ? select.options[select.selectedIndex].text : '';
+
+    if (!departmentId) {
+        showToast('Select department first.', 'error');
+        return;
+    }
+
+    try {
+        if (!localStorage.getItem('s_admin_token')) {
+            localStorage.setItem('s_admin_token', localStorage.getItem('token') || '');
+            localStorage.setItem('s_admin_username', localStorage.getItem('username') || 'S Admin');
+        }
+        const res = await apiCall('/api/s-admin/department-session', 'POST', {
+            department_id: departmentId
+        });
+        const user = res.user || {};
+        localStorage.setItem('token', res.access_token);
+        localStorage.setItem('role', 'Admin');
+        localStorage.setItem('username', user.username || localStorage.getItem('s_admin_username') || 'S Admin');
+        localStorage.setItem('department_id', departmentId);
+        localStorage.setItem('department_name', user.department || departmentName);
+        localStorage.setItem('savedDept', departmentId);
+        localStorage.setItem('is_global_admin', 'false');
+        showToast(res.msg || 'Opening department dashboard');
+        setTimeout(() => window.location.href = '/dashboard', 500);
+    } catch (err) {
+        showToast(err.message || 'Could not open department dashboard', 'error');
     }
 }
 
