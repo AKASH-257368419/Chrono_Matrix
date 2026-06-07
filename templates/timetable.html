@@ -810,7 +810,7 @@ async function printTimetable() {
     }
 }
 
-function renderGrid(schedules) {
+function renderGridLegacy(schedules) {
     const tbody = document.getElementById('tt-body');
     let html = '';
     
@@ -854,6 +854,66 @@ function renderGrid(schedules) {
         row += `</tr>`;
         html += row;
     });
+    tbody.innerHTML = html;
+}
+
+function renderGrid(schedules) {
+    const tbody = document.getElementById('tt-body');
+    let html = '';
+
+    DAYS.forEach(day => {
+        let displayDay = escapeOptionText(day);
+        if (day === 'Saturday') {
+            displayDay = `Saturday<br><span style="font-size: 0.75rem; font-weight: normal; color: rgba(255,255,255,0.5);">(2nd & 4th Working)</span>`;
+        }
+        let row = `<tr><th style="vertical-align: middle;">${displayDay}</th>`;
+        const slots = new Array(8).fill(null);
+
+        schedules.filter(s => s.day === day).forEach(s => {
+            for (let i = 0; i < s.duration; i++) {
+                slots[s.slot_index + i] = s;
+            }
+        });
+
+        let skip = 0;
+        for (let i = 0; i < 8; i++) {
+            if (skip > 0) {
+                skip--;
+                continue;
+            }
+
+            if (i === 3 || i === 5) {
+                row += `<td></td>`;
+            }
+
+            if (day === 'Saturday' && i === 5) {
+                row += `<td colspan="3" style="background: rgba(255, 255, 255, 0.02); text-align: center; vertical-align: middle; letter-spacing: 4px; font-weight: bold; color: var(--text-muted);">HALF DAY</td>`;
+                skip = 2;
+                continue;
+            }
+
+            const schedule = slots[i];
+            if (schedule) {
+                const bg = (schedule.type || '').includes('Lab') ? 'cell-lab' : 'cell-theory';
+                const assistantLine = schedule.assistant_faculty && !sameValue(schedule.assistant_faculty, schedule.faculty)
+                    ? `<div style="font-size:0.85rem; margin-top:0.15rem;">Assistant Faculty: ${escapeOptionText(schedule.assistant_faculty)}</div>`
+                    : '';
+                row += `<td class="${bg}" colspan="${schedule.duration}">
+                    <div style="font-weight:600; font-size:1.1rem;">${escapeOptionText(schedule.subject || '-')}</div>
+                    <div style="font-size:0.85rem; margin-top:0.3rem;">Main Faculty: ${escapeOptionText(schedule.faculty || '-')}</div>
+                    ${assistantLine}
+                    <div style="font-size:0.85rem; color:var(--text-muted);">Room: ${escapeOptionText(schedule.room || '-')}</div>
+                </td>`;
+                skip = schedule.duration - 1;
+            } else {
+                row += `<td>-</td>`;
+            }
+        }
+
+        row += `</tr>`;
+        html += row;
+    });
+
     tbody.innerHTML = html;
 }
 

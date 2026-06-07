@@ -242,7 +242,10 @@
                                         {% for schedule in schedules %}
                                             <div class="stacked-schedule">
                                                 <div class="subject">{{ schedule.subject_code }} - {{ schedule.subject }}</div>
-                                                <div class="details">{{ schedule.faculty_display if schedule.faculty_display is defined else schedule.faculty }}</div>
+                                                <div class="details">Main Faculty: {{ schedule.faculty }}</div>
+                                                {% if schedule.assistant_faculty %}
+                                                    <div class="details">Assistant Faculty: {{ schedule.assistant_faculty }}</div>
+                                                {% endif %}
                                                 <div class="details">{{ schedule.room }}</div>
                                                 {% if schedule.batch %}
                                                     <div class="details"><span class="batch-line">Batch: {{ schedule.batch }}</span></div>

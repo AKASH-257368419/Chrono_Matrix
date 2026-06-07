@@ -198,7 +198,7 @@ async function loadAvailability() {
 }
 
 async function saveAvailability() {
-    if(!confirm("Are you sure you want to save these availability settings?")) return;
+    if(!confirm("Save availability? Any existing timetable entries in newly unavailable slots will be freed automatically.")) return;
     const fid = document.getElementById('fa-faculty').value;
     if(!fid) return;
     

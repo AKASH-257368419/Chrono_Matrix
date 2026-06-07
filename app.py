@@ -1973,6 +1973,37 @@ def get_availability(faculty_id):
     unavail = FacultyAvailability.query.filter_by(faculty_id=faculty_id, is_available=False).all()
     return jsonify([{"day": u.day, "slot": int(u.time_slot)} for u in unavail])
 
+def free_schedules_for_unavailable_faculty(faculty_id, unavailable_slots):
+    unavailable_by_day = {}
+    for item in unavailable_slots:
+        day = str(item.get('day') or '').strip()
+        if not day:
+            continue
+        try:
+            slot = int(item.get('slot'))
+        except (TypeError, ValueError):
+            continue
+        unavailable_by_day.setdefault(day, set()).add(slot)
+
+    if not unavailable_by_day:
+        return 0
+
+    schedules = Schedule.query.filter(or_(
+        Schedule.faculty_id == faculty_id,
+        Schedule.asst_faculty_id == faculty_id
+    )).all()
+
+    freed_count = 0
+    for schedule in schedules:
+        unavailable_slots_for_day = unavailable_by_day.get(schedule.day, set())
+        if not unavailable_slots_for_day:
+            continue
+        occupied_slots = set(range(schedule.slot_index, schedule.slot_index + schedule.duration_slots))
+        if occupied_slots.intersection(unavailable_slots_for_day):
+            db.session.delete(schedule)
+            freed_count += 1
+    return freed_count
+
 @app.route('/api/availability/<int:faculty_id>', methods=['POST'])
 def save_availability(faculty_id):
     if not faculty_allowed(faculty_id):
@@ -1982,8 +2013,14 @@ def save_availability(faculty_id):
     for u in data:
         new_avail = FacultyAvailability(faculty_id=faculty_id, day=u['day'], time_slot=str(u['slot']), is_available=False)
         db.session.add(new_avail)
+    freed_count = free_schedules_for_unavailable_faculty(faculty_id, data)
     db.session.commit()
-    return jsonify({"msg": "Availability saved successfully!"}), 200
+    if freed_count:
+        return jsonify({
+            "msg": f"Availability saved. {freed_count} timetable entr{'ies were' if freed_count != 1 else 'y was'} freed automatically.",
+            "freed_count": freed_count
+        }), 200
+    return jsonify({"msg": "Availability saved successfully!", "freed_count": 0}), 200
 
 if __name__ == '__main__':
     with app.app_context():

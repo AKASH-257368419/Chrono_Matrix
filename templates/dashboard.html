@@ -287,6 +287,16 @@ function uniqueDashboardLabRooms(rooms) {
         .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
 }
 
+function dashboardFacultyDisplay(cell) {
+    if (cell.faculty_display) return cell.faculty_display;
+    const names = [];
+    if (cell.faculty) names.push(cell.faculty);
+    if (cell.assistant_faculty && !names.some(name => String(name).trim().toLowerCase() === String(cell.assistant_faculty).trim().toLowerCase())) {
+        names.push(cell.assistant_faculty);
+    }
+    return names.join(' / ') || '-';
+}
+
 async function loadLabTimetable() {
     const roomId = document.getElementById('lab-room-select').value;
     const year = document.getElementById('lab-year').value;
@@ -338,10 +348,11 @@ function renderLabGrid(schedules) {
             if (!cell) {
                 row += `<td style="color: var(--success); font-weight: 500; background: rgba(16, 185, 129, 0.1);">Available to Borrow</td>`;
             } else {
+                const faculty = dashboardFacultyDisplay(cell);
                 row += `<td class="cell-conflict" colspan="${cell.duration}" style="animation: none; background: rgba(239, 68, 68, 0.2); border-left: 3px solid #ef4444;">
                     <strong>Occupied</strong><br>
-                    <small>${cell.subject}</small><br>
-                    <small>${cell.faculty}</small>
+                    <small>${escapeDashboardText(cell.subject || '-')}</small><br>
+                    <small>${escapeDashboardText(faculty)}</small>
                 </td>`;
                 skip = cell.duration - 1;
             }
